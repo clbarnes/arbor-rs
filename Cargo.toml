@@ -1,0 +1,6 @@
+[package]
+name = "arbor-rs"
+version = "0.1.0"
+authors = ["Chris Barnes <barnesc@janelia.hhmi.org>"]
+
+[dependencies]
