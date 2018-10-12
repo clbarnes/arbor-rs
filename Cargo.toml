@@ -1,5 +1,5 @@
 [package]
-name = "arbor-rs"
+name = "arbor"
 version = "0.1.0"
 authors = ["Chris Barnes <barnesc@janelia.hhmi.org>"]
 
