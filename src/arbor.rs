@@ -2,8 +2,8 @@ use utils::{
     cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
 };
 
-use num_traits::real::Real;
-use num_traits::Zero;
+use num::traits::real::Real;
+use num::Zero;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -20,6 +20,15 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
             edges: HashMap::new(),
             root: None,
         }
+    }
+
+    pub fn add_singleton_node(&mut self, root: NodeType) -> Result<(), &str> {
+        if !self.nodes().is_empty() {
+            return Err("Arbor already has nodes")
+        } else {
+            self.root = Some(root);
+        }
+        Ok(())
     }
 
     pub fn has_parent(&self, node: NodeType) -> bool {
@@ -323,7 +332,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     /// Return a new arbor rooted at the given node and containing all nodes distal to it.
-    pub fn sub_arbor(self, new_root: NodeType) -> Arbor<NodeType> {
+    pub fn sub_arbor(&self, new_root: NodeType) -> Arbor<NodeType> {
         let succs = self.all_successors();
         let mut to_visit = vec![new_root];
 
@@ -343,6 +352,26 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
             edges,
             root: Some(new_root),
         }
+    }
+
+    /// Remove all nodes distal to the given one.
+    pub fn prune(&mut self, cut: NodeType) -> &Arbor<NodeType> {
+        let successors = self.all_successors();
+
+        let mut to_visit = successors.get(&cut).unwrap_or(&vec![]).to_owned();
+
+        while !to_visit.is_empty() {
+            let to_remove = to_visit
+                .pop()
+                .expect("unreachable: popped from non-empty vec");
+
+            self.edges.remove(&to_remove);  // this will probably fail
+
+            for next in successors.get(&to_remove).unwrap_or(&vec![]).iter() {
+                to_visit.push(*next);
+            }
+        }
+        self
     }
 }
 

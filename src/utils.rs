@@ -1,4 +1,4 @@
-use num_traits::real::Real;
+use num::traits::real::Real;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
