@@ -1,5 +1,6 @@
-#[macro_use]
-extern crate serde_derive;
+#[macro_use] extern crate serde_derive;
+
+#[macro_use] extern crate enum_primitive;
 extern crate serde;
 extern crate serde_json;
 

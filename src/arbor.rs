@@ -2,7 +2,7 @@ use utils::{
     cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
 };
 
-use num::traits::real::Real;
+use num::traits::float::Float;
 use num::Zero;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -20,6 +20,12 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
             edges: HashMap::new(),
             root: None,
         }
+    }
+
+    pub fn from<'a>(edges: HashMap<NodeType, NodeType>, root: Option<NodeType>) -> Result<Arbor<NodeType>, &'a str> {
+        let a = Arbor { edges, root };
+        a.check_valid();
+        Ok(a)
     }
 
     pub fn add_singleton_node(&mut self, root: NodeType) -> Result<(), &str> {
@@ -56,7 +62,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
         }
     }
 
-    fn check_valid(&self) -> Result<&Arbor<NodeType>, &str> {
+    pub fn check_valid(&self) -> Result<&Arbor<NodeType>, &str> {
         let root = self.check_valid_root()?;
 
         let mut global_visited: HashSet<NodeType> = HashSet::new();
@@ -158,29 +164,29 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
         self
     }
 
-    pub fn nodes_distance_to_root<CoordType: Real>(
+    pub fn nodes_distance_to_root<F: Float>(
         &self,
-        positions: HashMap<NodeType, Location<CoordType>>,
-    ) -> HashMap<NodeType, CoordType> {
+        positions: HashMap<NodeType, Location<F>>,
+    ) -> HashMap<NodeType, F> {
         self.nodes_distance_to(self.root.expect("Arbor has no root"), positions)
     }
 
-    pub fn nodes_distance_to<CoordType: Real>(
+    pub fn nodes_distance_to<F: Float>(
         &self,
         target: NodeType,
-        positions: HashMap<NodeType, Location<CoordType>>,
-    ) -> HashMap<NodeType, CoordType> {
+        positions: HashMap<NodeType, Location<F>>,
+    ) -> HashMap<NodeType, F> {
         let msg = "positions did not contain all required nodes";
         let distance_fn = |n1: NodeType, n2: NodeType| {
             positions
                 .get(&n1)
-                .expect(msg)
-                .distance_to(positions.get(&n2).expect(msg))
+                .expect(msg).clone()
+                .distance_to(positions.get(&n2).expect(msg).clone())
         };
 
         let successors = self.all_successors();
 
-        let mut dists: HashMap<NodeType, CoordType> = HashMap::new();
+        let mut dists: HashMap<NodeType, F> = HashMap::new();
         dists.insert(target, Zero::zero());
 
         let mut to_visit = successors.get(&target).unwrap_or(&vec![]).to_owned();

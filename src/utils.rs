@@ -1,10 +1,14 @@
-use num::traits::real::Real;
+use num::traits::float::Float;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::mem;
+use serde::Deserialize;
 use Arbor;
+use std::ops::Sub;
+use num::Integer;
+
 
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();
@@ -18,16 +22,34 @@ pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     }
 }
 
-pub struct Location<CoordType> {
-    pub x: CoordType,
-    pub y: CoordType,
-    pub z: CoordType,
+#[derive(Deserialize, Debug, Clone)]
+pub struct Location<F: Float> {
+    pub x: F,
+    pub y: F,
+    pub z: F,
 }
 
-impl<CoordType: Real> Location<CoordType> {
-    pub fn distance_to(&self, other: &Location<CoordType>) -> CoordType {
-        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2))
-            .sqrt()
+impl<F: Float> Location<F> {
+    pub fn norm(&self) -> F {
+        (self.x.powi(2) + self.y.powi(2) + self.z.powi(2)).sqrt()
+    }
+}
+
+impl<F: Float> Sub<Location<F>> for Location<F> {
+    type Output = Location<F>;
+
+    fn sub(self, rhs: Location<F>) -> <Self as Sub<Location<F>>>::Output {
+        Location {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z,
+        }
+    }
+}
+
+impl<F: Float> Location<F> {
+    pub fn distance_to(self, other: Location<F>) -> F {
+        (self - other).norm()
     }
 }
 
@@ -116,13 +138,13 @@ impl<'a, NodeType: Hash + Eq + Copy + Ord> Iterator for Partitions<'a, NodeType>
     }
 }
 
-pub struct NodesDistanceTo<NodeType: Hash, CoordType> {
-    distances: HashMap<NodeType, CoordType>,
-    max: CoordType,
+pub struct NodesDistanceTo<NodeType: Hash, Float> {
+    distances: HashMap<NodeType, Float>,
+    max: Float,
 }
 
-impl<NodeType: Hash + Eq, CoordType: Ord + Clone> NodesDistanceTo<NodeType, CoordType> {
-    pub fn new(distances: HashMap<NodeType, CoordType>) -> NodesDistanceTo<NodeType, CoordType> {
+impl<NodeType: Hash + Eq, Float: Ord + Clone> NodesDistanceTo<NodeType, Float> {
+    pub fn new(distances: HashMap<NodeType, Float>) -> NodesDistanceTo<NodeType, Float> {
         let max = distances.values().cloned().max().unwrap();
         NodesDistanceTo { distances, max }
     }
