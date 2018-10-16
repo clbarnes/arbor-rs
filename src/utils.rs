@@ -1,14 +1,16 @@
 use num::traits::float::Float;
+use num::traits::real::Real;
+use num::Integer;
+use num::Zero;
+use serde::Deserialize;
 use std::cmp::Ordering;
+use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::mem;
-use serde::Deserialize;
-use Arbor;
 use std::ops::Sub;
-use num::Integer;
-
+use Arbor;
 
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();
@@ -60,7 +62,10 @@ pub struct RootwardPath<'a, NodeType: 'a + Hash> {
 }
 
 impl<'a, NodeType: Hash + Eq + Copy + Ord> RootwardPath<'a, NodeType> {
-    pub fn new(arbor: &Arbor<NodeType>, start: NodeType) -> Result<RootwardPath<NodeType>, &str> {
+    pub fn new(
+        arbor: &Arbor<NodeType>,
+        start: NodeType,
+    ) -> Result<RootwardPath<NodeType>, &'static str> {
         if !arbor.has_parent(start) && arbor.root.clone().map_or(false, |n| start != n) {
             Err("No path to root: Arbor does not contain starting node")
         } else {
@@ -84,6 +89,36 @@ impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for RootwardPath<'a, NodeTyp
                 self.arbor.get_parent(node).map(|n| n.clone()),
             ),
             None => None,
+        }
+    }
+}
+
+pub struct NodesIterator<'a, NodeType: 'a + Hash> {
+    arbor: &'a Arbor<NodeType>,
+    children_iter: Keys<'a, NodeType, NodeType>,
+    root: Option<NodeType>,
+}
+
+impl<'a, NodeType: Hash + Eq + Copy + Ord> NodesIterator<'a, NodeType> {
+    pub fn new(arbor: &Arbor<NodeType>) -> NodesIterator<NodeType> {
+        NodesIterator {
+            arbor,
+            children_iter: arbor.edges.keys(),
+            root: arbor.root,
+        }
+    }
+}
+
+impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for NodesIterator<'a, NodeType> {
+    type Item = NodeType;
+
+    fn next(&mut self) -> Option<NodeType> {
+        match self.children_iter.next() {
+            Some(n) => Some(*n),
+            None => match self.root {
+                Some(_n) => mem::replace(&mut self.root, None),
+                None => None,
+            },
         }
     }
 }
@@ -138,15 +173,36 @@ impl<'a, NodeType: Hash + Eq + Copy + Ord> Iterator for Partitions<'a, NodeType>
     }
 }
 
-pub struct NodesDistanceTo<NodeType: Hash, Float> {
-    distances: HashMap<NodeType, Float>,
-    max: Float,
+pub struct NodesDistanceTo<NodeType: Hash, D> {
+    distances: HashMap<NodeType, D>,
+    max: D,
 }
 
-impl<NodeType: Hash + Eq, Float: Ord + Clone> NodesDistanceTo<NodeType, Float> {
-    pub fn new(distances: HashMap<NodeType, Float>) -> NodesDistanceTo<NodeType, Float> {
-        let max = distances.values().cloned().max().unwrap();
-        NodesDistanceTo { distances, max }
+impl<NodeType: Hash + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
+    pub fn from_orders(orders: HashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
+        let max = orders.values().max().unwrap().to_owned();
+        NodesDistanceTo {
+            distances: orders,
+            max,
+        }
+    }
+}
+
+impl<NodeType: Hash + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
+    pub fn from_distances(distances: HashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
+        let mut max: F = Zero::zero();
+
+        for d in distances.values() {
+            max = match max.partial_cmp(d).unwrap_or(Ordering::Greater) {
+                Ordering::Less => *d,
+                _ => max,
+            };
+        }
+
+        NodesDistanceTo {
+            distances,
+            max: max.to_owned(),
+        }
     }
 }
 

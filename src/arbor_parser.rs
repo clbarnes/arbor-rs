@@ -1,11 +1,11 @@
 use num::traits::float::Float;
 use num::FromPrimitive;
+use serde::Deserialize;
+use serde::Deserializer;
 use std::collections::HashMap;
 use std::hash::Hash;
 use utils::Location;
 use Arbor;
-use serde::Deserialize;
-use serde::Deserializer;
 
 enum_from_primitive! {
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -32,11 +32,11 @@ trait ArborParseable<C: DescribesConnector> {
 
     fn treenodes(&self) -> &Vec<Treenode>;
 
-    fn to_arborparser(&self) -> Result<ArborParser<u64, f64>, &str> {
+    fn to_arborparser(&self) -> Result<ArborParser<u64, f64>, &'static str> {
         let arbor_locations = self.treenodes_to_arbor_locations()?;
         let inputs_outputs = self.connectors_to_inputs_outputs();
 
-        Ok(ArborParser{
+        Ok(ArborParser {
             arbor: arbor_locations.arbor,
             inputs: inputs_outputs.inputs,
             outputs: inputs_outputs.outputs,
@@ -54,12 +54,12 @@ trait ArborParseable<C: DescribesConnector> {
                 ConnectorRelation::Postsynaptic => {
                     let mut entry = inputs.entry(connector.treenode_id).or_insert(0);
                     *entry += 1;
-                },
+                }
                 ConnectorRelation::Presynaptic => {
                     let mut entry = outputs.entry(connector.treenode_id).or_insert(0);
                     *entry += 1;
                 }
-                _ => ()
+                _ => (),
             }
         }
 
@@ -67,7 +67,7 @@ trait ArborParseable<C: DescribesConnector> {
     }
 
     /// N.B. does not check validity of input
-    fn treenodes_to_arbor_locations(&self) -> Result<ArborLocations<u64, f64>, &str> {
+    fn treenodes_to_arbor_locations(&self) -> Result<ArborLocations<u64, f64>, &'static str> {
         let mut locations: HashMap<u64, Location<f64>> = HashMap::new();
         let mut edges: HashMap<u64, u64> = HashMap::new();
         let mut root = None;
@@ -76,19 +76,22 @@ trait ArborParseable<C: DescribesConnector> {
             match treenode.parent_id {
                 Some(tn) => {
                     edges.insert(treenode.id, tn);
-                },
+                }
                 None => {
                     root = match root {
                         Some(node) => Err("More than one parentless node found in this arbor"),
                         None => Ok(Some(treenode.id)),
                     }?;
-                },
+                }
             }
 
             locations.insert(treenode.id, treenode.location.clone());
         }
 
-        Ok(ArborLocations { arbor: Arbor::from(edges, root)?, locations })
+        Ok(ArborLocations {
+            arbor: Arbor::from(edges, root)?,
+            locations,
+        })
     }
 }
 
@@ -119,18 +122,26 @@ struct SkeletonConnector {
 struct SkeletonResponse {
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
-    tags: HashMap<u64, Vec<String>>,  // not sure what's in this dict
-    // conditionally has a bunch of other stuff?
+    tags: HashMap<u64, Vec<String>>, // not sure what's in this dict
+                                     // conditionally has a bunch of other stuff?
 }
 
 impl ArborParseable<SkeletonConnector> for SkeletonResponse {
-    fn connectors(&self) -> &Vec<SkeletonConnector> { &self.connectors }
-    fn treenodes(&self) -> &Vec<Treenode> { &self.treenodes }
+    fn connectors(&self) -> &Vec<SkeletonConnector> {
+        &self.connectors
+    }
+    fn treenodes(&self) -> &Vec<Treenode> {
+        &self.treenodes
+    }
 }
 
 impl ArborParseable<ArborConnector> for ArborResponse {
-    fn connectors(&self) -> &Vec<ArborConnector> { &self.connectors }
-    fn treenodes(&self) -> &Vec<Treenode> { &self.treenodes }
+    fn connectors(&self) -> &Vec<ArborConnector> {
+        &self.connectors
+    }
+    fn treenodes(&self) -> &Vec<Treenode> {
+        &self.treenodes
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -193,10 +204,19 @@ impl<NodeType: Hash + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
         }
         out
     }
+
+    fn collapse_artifactual_branches(
+        &mut self,
+        tags: HashMap<String, Vec<NodeType>>,
+    ) -> ArborParser<NodeType, F> {
+        unimplemented!();
+    }
+
+    // todo: collapse short branches too?
 }
 
 impl ArborParser<u64, f64> {
-    fn from_response<'a>(response: Response) -> Result<ArborParser<u64, f64>, &'a str> {
+    fn from_response(response: Response) -> Result<ArborParser<u64, f64>, &'static str> {
         match response {
             Response::Skeleton(r) => r.to_arborparser(),
             Response::Arbor(r) => r.to_arborparser(),
