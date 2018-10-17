@@ -251,15 +251,9 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
 
         for (node, degree) in out_degrees.iter() {
             match degree {
-                0 => {
-                    ends.insert(node.clone());
-                    ()
-                }
+                0 => { ends.insert(node.clone()); },
                 1 => (),
-                _ => {
-                    branches.insert(node.clone(), degree.clone());
-                    ()
-                }
+                _ => { branches.insert(node.clone(), degree.clone()); }
             };
         }
 
@@ -295,8 +289,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
         targets: HashMap<NodeType, usize>,
         sources: HashMap<NodeType, usize>,
     ) -> Option<HashMap<NodeType, FlowCentrality>> {
-        // todo
-        None
+        unimplemented!()
     }
 
     pub fn has_node(&self, node: NodeType) -> bool {
