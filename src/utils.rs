@@ -1,3 +1,7 @@
+use fnv::{
+    FnvHashSet,
+    FnvHashMap,
+};
 use num::traits::float::Float;
 use num::traits::real::Real;
 use num::Integer;
@@ -5,8 +9,6 @@ use num::Zero;
 use serde::Deserialize;
 use std::cmp::Ordering;
 use std::collections::hash_map::Keys;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
@@ -118,7 +120,7 @@ impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for NodesIterator<'a, NodeTy
 
 pub struct Partitions<'a, NodeType: 'a + Hash + Clone> {
     arbor: &'a Arbor<NodeType>,
-    visited: HashSet<NodeType>, // todo: use branches instead, save memory
+    visited: FnvHashSet<NodeType>, // todo: use branches instead, save memory
     ends: Vec<NodeType>,
 }
 
@@ -134,7 +136,7 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Partitions<'a, NodeType> {
 
         Partitions {
             arbor,
-            visited: HashSet::new(),
+            visited: FnvHashSet::default(),
             ends,
         }
     }
@@ -166,12 +168,12 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
 
 #[derive(Debug, PartialEq)]
 pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
-    distances: HashMap<NodeType, D>,
+    distances: FnvHashMap<NodeType, D>,
     max: D,
 }
 
 impl<NodeType:  Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
-    pub fn from_orders(orders: HashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
+    pub fn from_orders(orders: FnvHashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
         let max = orders.values().max().unwrap().to_owned();
         NodesDistanceTo {
             distances: orders,
@@ -181,7 +183,7 @@ impl<NodeType:  Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType,
 }
 
 impl<NodeType:  Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
-    pub fn from_distances(distances: HashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
+    pub fn from_distances(distances: FnvHashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
         let mut max: F = Zero::zero();
 
         for d in distances.values() {
@@ -199,15 +201,15 @@ impl<NodeType:  Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F>
 }
 
 pub struct BranchAndEndNodes<NodeType> {
-    pub branches: HashMap<NodeType, usize>,
-    pub ends: HashSet<NodeType>,
+    pub branches: FnvHashMap<NodeType, usize>,
+    pub ends: FnvHashSet<NodeType>,
     pub n_branches: usize,
 }
 
 impl<NodeType: Hash + Eq> BranchAndEndNodes<NodeType> {
     pub fn new(
-        branches: HashMap<NodeType, usize>,
-        ends: HashSet<NodeType>,
+        branches: FnvHashMap<NodeType, usize>,
+        ends: FnvHashSet<NodeType>,
     ) -> BranchAndEndNodes<NodeType> {
         let n_branches = branches.len();
         BranchAndEndNodes {

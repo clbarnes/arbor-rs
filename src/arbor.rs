@@ -2,17 +2,19 @@ use utils::{
     cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
 };
 
+use fnv::{
+    FnvHashSet,
+    FnvHashMap,
+};
 use num::traits::float::Float;
 use num::Zero;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use utils::NodesIterator;
 
 #[derive(Clone)]
 pub struct Arbor<NodeType: Hash + Clone> {
-    pub(crate) edges: HashMap<NodeType, NodeType>,
+    pub(crate) edges: FnvHashMap<NodeType, NodeType>,
     pub root: Option<NodeType>,
 }
 
@@ -21,14 +23,14 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Creates an empty arbor
     pub fn new() -> Arbor<NodeType> {
         Arbor {
-            edges: HashMap::new(),
+            edges: FnvHashMap::default(),
             root: None,
         }
     }
 
     /// Creates a populated arbor and checks that it is valid
     pub fn from<'a>(
-        edges: HashMap<NodeType, NodeType>,
+        edges: FnvHashMap<NodeType, NodeType>,
         root: Option<NodeType>,
     ) -> Result<Arbor<NodeType>, &'static str> {
         let a = Arbor { edges, root };
@@ -79,12 +81,12 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     pub fn check_valid(&self) -> Result<&Arbor<NodeType>, &'static str> {
         let root = self.check_valid_root()?;
 
-        let mut global_visited: HashSet<NodeType> = HashSet::new();
+        let mut global_visited: FnvHashSet<NodeType> = FnvHashSet::default();
         global_visited.insert(root);
         let mut intersects: bool;
 
         for start in self.edges.keys() {
-            let mut local_visited: HashSet<NodeType> = HashSet::new();
+            let mut local_visited: FnvHashSet<NodeType> = FnvHashSet::default();
             intersects = false;
 
             for node in self.path_to_root(*start)? {
@@ -108,8 +110,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     fn find_root(&self) -> Result<NodeType, &'static str> {
 
-        let distals: HashSet<NodeType> = self.edges.keys().cloned().collect();
-        let proximals: HashSet<NodeType> = self.edges.values().cloned().collect();
+        let distals: FnvHashSet<NodeType> = self.edges.keys().cloned().collect();
+        let proximals: FnvHashSet<NodeType> = self.edges.values().cloned().collect();
 
         let diff: Vec<NodeType> = proximals.difference(&distals).cloned().collect();
 
@@ -176,7 +178,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn nodes_distance_to_root<F: Float>(
         &self,
-        positions: HashMap<NodeType, Location<F>>,
+        positions: FnvHashMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
         self.nodes_distance_to(self.root.expect("Arbor has no root"), positions)
     }
@@ -184,7 +186,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     pub fn nodes_distance_to<F: Float>(
         &self,
         target: NodeType,
-        positions: HashMap<NodeType, Location<F>>,
+        positions: FnvHashMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
 
         let msg = "positions did not contain all required nodes";
@@ -205,11 +207,11 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         &self,
         target: NodeType,
         distance_fn: F,
-    ) -> HashMap<NodeType, T> {
+    ) -> FnvHashMap<NodeType, T> {
 
         let successors = self.all_successors();
 
-        let mut dists: HashMap<NodeType, T> = HashMap::new();
+        let mut dists: FnvHashMap<NodeType, T> = FnvHashMap::default();
         dists.insert(target, Zero::zero());
 
         if let Some(to_visit) = successors.get(&target) {
@@ -230,8 +232,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         dists
     }
 
-    pub fn all_successors(&self) -> HashMap<NodeType, Vec<NodeType>> {
-        let mut out: HashMap<NodeType, Vec<NodeType>> = HashMap::new();
+    pub fn all_successors(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
+        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = FnvHashMap::default();
         for (succ, pred) in self.edges.iter() {
             let entry = out.entry(pred.clone()).or_insert(Vec::new());
             entry.push(succ.clone());
@@ -239,12 +241,12 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         out
     }
 
-    pub fn children(&self) -> HashSet<NodeType> {
+    pub fn children(&self) -> FnvHashSet<NodeType> {
         self.edges.keys().cloned().collect()
     }
 
     pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
-        let mut out_degrees: HashMap<NodeType, usize> = HashMap::new();
+        let mut out_degrees: FnvHashMap<NodeType, usize> = FnvHashMap::default();
         for (distal, proximal) in self.edges.iter() {
             out_degrees.entry(*distal).or_insert(0);
 
@@ -252,8 +254,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             *prox_entry += 1
         }
 
-        let mut branches: HashMap<NodeType, usize> = HashMap::new();
-        let mut ends: HashSet<NodeType> = HashSet::new();
+        let mut branches: FnvHashMap<NodeType, usize> = FnvHashMap::default();
+        let mut ends: FnvHashSet<NodeType> = FnvHashSet::default();
 
         for (node, degree) in out_degrees.iter() {
             match degree {
@@ -276,8 +278,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         partitions
     }
 
-    pub fn all_neighbours(&self) -> HashMap<NodeType, Vec<NodeType>> {
-        let mut out: HashMap<NodeType, Vec<NodeType>> = HashMap::new();
+    pub fn all_neighbours(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
+        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = FnvHashMap::default();
         for (succ, pred) in self.edges.iter() {
             out.entry(pred.clone())
                 .or_insert(Vec::new())
@@ -292,9 +294,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn flow_centrality(
         &self,
-        targets: HashMap<NodeType, usize>,
-        sources: HashMap<NodeType, usize>,
-    ) -> Option<HashMap<NodeType, FlowCentrality>> {
+        targets: FnvHashMap<NodeType, usize>,
+        sources: FnvHashMap<NodeType, usize>,
+    ) -> Option<FnvHashMap<NodeType, FlowCentrality>> {
         unimplemented!()
     }
 
@@ -329,7 +331,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
         let successors = self.all_successors();
         let mut to_visit = vec![new_root];
-        let mut edges: HashMap<NodeType, NodeType> = HashMap::new();
+        let mut edges: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
 
         while let Some(proximal) = to_visit.pop() {
 
@@ -436,10 +438,10 @@ mod tests {
         let arbor = make_arbor();
         let branch_ends = arbor.find_branch_and_end_nodes();
 
-        let mut expected_branches: HashMap<u64, usize> = vec![(3, 2)].into_iter().collect();
+        let mut expected_branches: FnvHashMap<u64, usize> = vec![(3, 2)].into_iter().collect();
         assert_eq!(branch_ends.branches, expected_branches);
 
-        let mut expected_ends: HashSet<u64> = vec![5, 7].into_iter().collect();
+        let mut expected_ends: FnvHashSet<u64> = vec![5, 7].into_iter().collect();
         assert_eq!(branch_ends.ends, expected_ends);
 
         assert_eq!(branch_ends.n_branches, 1)
@@ -470,7 +472,7 @@ mod tests {
         let arbor = make_arbor();
 
         let orders = arbor.nodes_order_from(3);
-        let expected: HashMap<u64, usize> = vec![(3, 0), (4, 1), (5, 2), (6, 1), (7, 2)]
+        let expected: FnvHashMap<u64, usize> = vec![(3, 0), (4, 1), (5, 2), (6, 1), (7, 2)]
             .into_iter()
             .collect();
 
@@ -482,7 +484,7 @@ mod tests {
     fn nodes_distance_to() {
         let arbor = make_arbor();
 
-        let locations: HashMap<u64, Location<f64>> = vec![
+        let locations: FnvHashMap<u64, Location<f64>> = vec![
             (
                 1,
                 Location {
@@ -543,7 +545,7 @@ mod tests {
             .collect();
 
         let orders = arbor.nodes_distance_to(3, locations);
-        let expected: HashMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
+        let expected: FnvHashMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
             .into_iter()
             .collect();
 

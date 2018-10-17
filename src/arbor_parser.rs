@@ -1,8 +1,8 @@
+use fnv::FnvHashMap;
 use num::traits::float::Float;
 use num::FromPrimitive;
 use serde::Deserialize;
 use serde::Deserializer;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use utils::Location;
@@ -20,12 +20,12 @@ enum ConnectorRelation {
 
 struct ArborLocations<NodeType: Hash + Clone, F: Float> {
     arbor: Arbor<NodeType>,
-    locations: HashMap<NodeType, Location<F>>,
+    locations: FnvHashMap<NodeType, Location<F>>,
 }
 
 struct InputsOutputs<NodeType> {
-    inputs: HashMap<NodeType, usize>,
-    outputs: HashMap<NodeType, usize>,
+    inputs: FnvHashMap<NodeType, usize>,
+    outputs: FnvHashMap<NodeType, usize>,
 }
 
 trait ArborParseable<C: DescribesConnector> {
@@ -46,8 +46,8 @@ trait ArborParseable<C: DescribesConnector> {
     }
 
     fn connectors_to_inputs_outputs(&self) -> InputsOutputs<u64> {
-        let mut inputs: HashMap<u64, usize> = HashMap::new();
-        let mut outputs: HashMap<u64, usize> = HashMap::new();
+        let mut inputs: FnvHashMap<u64, usize> = FnvHashMap::default();
+        let mut outputs: FnvHashMap<u64, usize> = FnvHashMap::default();
 
         for connector_info in self.connectors().iter() {
             let connector = connector_info.this();
@@ -69,8 +69,8 @@ trait ArborParseable<C: DescribesConnector> {
 
     /// N.B. does not check validity of input
     fn treenodes_to_arbor_locations(&self) -> Result<ArborLocations<u64, f64>, &'static str> {
-        let mut locations: HashMap<u64, Location<f64>> = HashMap::new();
-        let mut edges: HashMap<u64, u64> = HashMap::new();
+        let mut locations: FnvHashMap<u64, Location<f64>> = FnvHashMap::default();
+        let mut edges: FnvHashMap<u64, u64> = FnvHashMap::default();
         let mut root = None;
 
         for treenode in self.treenodes().iter() {
@@ -123,7 +123,7 @@ struct SkeletonConnector {
 struct SkeletonResponse {
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
-    tags: HashMap<u64, Vec<String>>, // not sure what's in this dict
+    tags: FnvHashMap<u64, Vec<String>>, // not sure what's in this dict
                                      // conditionally has a bunch of other stuff?
 }
 
@@ -171,7 +171,7 @@ impl DescribesConnector for SkeletonConnector {
 struct ArborResponse {
     treenodes: Vec<Treenode>,
     connectors: Vec<ArborConnector>,
-    tags: HashMap<u64, Vec<String>>,
+    tags: FnvHashMap<u64, Vec<String>>,
 }
 
 enum Response {
@@ -181,23 +181,23 @@ enum Response {
 
 pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     arbor: Arbor<NodeType>,
-    inputs: HashMap<NodeType, usize>,
-    outputs: HashMap<NodeType, usize>,
-    locations: HashMap<NodeType, Location<F>>,
+    inputs: FnvHashMap<NodeType, usize>,
+    outputs: FnvHashMap<NodeType, usize>,
+    locations: FnvHashMap<NodeType, Location<F>>,
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
     fn new() -> ArborParser<NodeType, F> {
         ArborParser {
             arbor: Arbor::new(),
-            inputs: HashMap::new(),
-            outputs: HashMap::new(),
-            locations: HashMap::new(),
+            inputs: FnvHashMap::default(),
+            outputs: FnvHashMap::default(),
+            locations: FnvHashMap::default(),
         }
     }
 
-    fn create_synapse_map(&self) -> HashMap<NodeType, usize> {
-        let mut out: HashMap<NodeType, usize> = HashMap::new();
+    fn create_synapse_map(&self) -> FnvHashMap<NodeType, usize> {
+        let mut out: FnvHashMap<NodeType, usize> = FnvHashMap::default();
 
         for (key, value) in self.inputs.iter().chain(self.outputs.iter()) {
             let mut entry = out.entry(*key).or_insert(0);
@@ -208,7 +208,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 
     fn collapse_artifactual_branches(
         &mut self,
-        tags: HashMap<String, Vec<NodeType>>,
+        tags: FnvHashMap<String, Vec<NodeType>>,
     ) -> ArborParser<NodeType, F> {
         unimplemented!();
     }

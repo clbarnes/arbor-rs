@@ -3,6 +3,7 @@ extern crate serde_derive;
 
 #[macro_use]
 extern crate enum_primitive;
+extern crate fnv;
 extern crate serde;
 extern crate serde_json;
 #[cfg(test)]
