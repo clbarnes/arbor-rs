@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 use std::ops::Sub;
@@ -55,13 +56,12 @@ impl<F: Float> Location<F> {
     }
 }
 
-pub struct RootwardPath<'a, NodeType: 'a + Hash> {
+pub struct RootwardPath<'a, NodeType: 'a + Hash + Clone> {
     arbor: &'a Arbor<NodeType>,
-    start: NodeType,
     next: Option<NodeType>,
 }
 
-impl<'a, NodeType: Hash + Eq + Copy + Ord> RootwardPath<'a, NodeType> {
+impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> RootwardPath<'a, NodeType> {
     pub fn new(
         arbor: &Arbor<NodeType>,
         start: NodeType,
@@ -71,14 +71,13 @@ impl<'a, NodeType: Hash + Eq + Copy + Ord> RootwardPath<'a, NodeType> {
         } else {
             Ok(RootwardPath {
                 arbor,
-                start,
                 next: Some(start),
             })
         }
     }
 }
 
-impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for RootwardPath<'a, NodeType> {
+impl<'a, NodeType: Copy + Debug + Hash + Eq + Ord> Iterator for RootwardPath<'a, NodeType> {
     type Item = NodeType;
 
     fn next(&mut self) -> Option<NodeType> {
@@ -93,7 +92,7 @@ impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for RootwardPath<'a, NodeTyp
     }
 }
 
-pub struct NodesIterator<'a, NodeType: 'a + Hash> {
+pub struct NodesIterator<'a, NodeType: 'a + Hash + Clone> {
     arbor: &'a Arbor<NodeType>,
     children_iter: Keys<'a, NodeType, NodeType>,
     root: Option<NodeType>,
@@ -113,23 +112,17 @@ impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for NodesIterator<'a, NodeTy
     type Item = NodeType;
 
     fn next(&mut self) -> Option<NodeType> {
-        match self.children_iter.next() {
-            Some(n) => Some(*n),
-            None => match self.root {
-                Some(_n) => mem::replace(&mut self.root, None),
-                None => None,
-            },
-        }
+        self.children_iter.next().cloned().or_else(|| self.root.take())
     }
 }
 
-pub struct Partitions<'a, NodeType: 'a + Hash> {
+pub struct Partitions<'a, NodeType: 'a + Hash + Clone> {
     arbor: &'a Arbor<NodeType>,
     visited: HashSet<NodeType>, // todo: use branches instead, save memory
     ends: Vec<NodeType>,
 }
 
-impl<'a, NodeType: Hash + Eq + Copy + Ord> Partitions<'a, NodeType> {
+impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Partitions<'a, NodeType> {
     pub fn new(arbor: &Arbor<NodeType>) -> Partitions<NodeType> {
         let mut ends: Vec<NodeType> = arbor
             .find_branch_and_end_nodes()
@@ -147,13 +140,13 @@ impl<'a, NodeType: Hash + Eq + Copy + Ord> Partitions<'a, NodeType> {
     }
 }
 
-impl<'a, NodeType: Hash + Eq + Copy + Ord> Iterator for Partitions<'a, NodeType> {
+impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, NodeType> {
     type Item = Vec<NodeType>;
 
     fn next(&mut self) -> Option<Vec<NodeType>> {
         // todo: check whether this actually needs a true longest partition as per JS
-        match self.ends.pop() {
-            Some(start) => {
+        self.ends.pop()
+            .map(|start| {
                 let mut path: Vec<NodeType> = Vec::new();
                 for node in self
                     .arbor
@@ -166,19 +159,18 @@ impl<'a, NodeType: Hash + Eq + Copy + Ord> Iterator for Partitions<'a, NodeType>
                     }
                     self.visited.insert(node);
                 }
-                Some(path)
-            }
-            None => None,
-        }
+                path
+            })
     }
 }
 
-pub struct NodesDistanceTo<NodeType: Hash, D> {
+#[derive(Debug, PartialEq)]
+pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
     distances: HashMap<NodeType, D>,
     max: D,
 }
 
-impl<NodeType: Hash + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
+impl<NodeType:  Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
     pub fn from_orders(orders: HashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
         let max = orders.values().max().unwrap().to_owned();
         NodesDistanceTo {
@@ -188,7 +180,7 @@ impl<NodeType: Hash + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
     }
 }
 
-impl<NodeType: Hash + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
+impl<NodeType:  Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
     pub fn from_distances(distances: HashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
         let mut max: F = Zero::zero();
 

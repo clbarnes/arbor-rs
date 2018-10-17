@@ -5,6 +5,8 @@ extern crate serde_derive;
 extern crate enum_primitive;
 extern crate serde;
 extern crate serde_json;
+#[cfg(test)]
+extern crate bencher;
 
 extern crate num;
 

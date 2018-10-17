@@ -6,16 +6,18 @@ use num::traits::float::Float;
 use num::Zero;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::hash::Hash;
-use std::mem;
 use utils::NodesIterator;
 
-pub struct Arbor<NodeType: Hash> {
+#[derive(Clone)]
+pub struct Arbor<NodeType: Hash + Clone> {
     pub(crate) edges: HashMap<NodeType, NodeType>,
     pub root: Option<NodeType>,
 }
 
-impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Creates an empty arbor
     pub fn new() -> Arbor<NodeType> {
         Arbor {
@@ -36,10 +38,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Checks whether arbor has any nodes
     fn is_empty(&self) -> bool {
-        self.edges.is_empty() && match self.root {
-            Some(n) => false,
-            None => true,
-        }
+        self.edges.is_empty() && self.root.is_none()
     }
 
     /// Adds a node without any edges (errors if arbor has nodes already)
@@ -108,13 +107,9 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     fn find_root(&self) -> Result<NodeType, &'static str> {
-        let mut distals: HashSet<NodeType> = HashSet::new();
-        let mut proximals: HashSet<NodeType> = HashSet::new();
 
-        for (distal, proximal) in self.edges.iter() {
-            distals.insert(distal.clone());
-            proximals.insert(proximal.clone());
-        }
+        let distals: HashSet<NodeType> = self.edges.keys().cloned().collect();
+        let proximals: HashSet<NodeType> = self.edges.values().cloned().collect();
 
         let diff: Vec<NodeType> = proximals.difference(&distals).cloned().collect();
 
@@ -136,7 +131,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
             self.edges.insert(chunk[0], chunk[1]);
         }
         let new_root = self.find_root().unwrap();
-        mem::replace(&mut self.root, Some(new_root));
+        self.root = Some(new_root);
         self
     }
 
@@ -155,7 +150,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
         }
 
         if should_replace {
-            mem::replace(&mut self.root, Some(possible_root.clone()));
+            self.root = Some(possible_root.clone());
         }
         self
     }
@@ -191,6 +186,7 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
         target: NodeType,
         positions: HashMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
+
         let msg = "positions did not contain all required nodes";
         let distance_fn = |n1: NodeType, n2: NodeType| {
             positions
@@ -200,28 +196,38 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
                 .distance_to(positions.get(&n2).expect(msg).clone())
         };
 
+        let dists = self.nodes_edge_metric(target, distance_fn);
+
+        NodesDistanceTo::from_distances(dists)
+    }
+
+    fn nodes_edge_metric<F: Fn(NodeType, NodeType) -> T, T: Zero + Clone>(
+        &self,
+        target: NodeType,
+        distance_fn: F,
+    ) -> HashMap<NodeType, T> {
+
         let successors = self.all_successors();
 
-        let mut dists: HashMap<NodeType, F> = HashMap::new();
+        let mut dists: HashMap<NodeType, T> = HashMap::new();
         dists.insert(target, Zero::zero());
 
-        let mut to_visit = successors.get(&target).unwrap_or(&vec![]).to_owned();
+        if let Some(to_visit) = successors.get(&target) {
 
-        while !to_visit.is_empty() {
-            let distal = to_visit
-                .pop()
-                .expect("unreachable: popped from non-empty vec");
-            let proximal = self.edges.get(&distal).expect("unreachable");
-            let dist_to_prox = *dists.get(proximal).expect("unreachable");
+            let mut to_visit = to_visit.to_owned();
+            while let Some(distal) = to_visit.pop() {
+                let proximal = self.edges[&distal];
+                let dist_to_prox = dists[&proximal].clone();
 
-            dists.insert(distal, dist_to_prox + distance_fn(*proximal, distal));
+                dists.insert(distal, dist_to_prox + distance_fn(proximal, distal));
 
-            for next in successors.get(&distal).unwrap_or(&vec![]).iter() {
-                to_visit.push(*next);
+                if let Some(children) = successors.get(&distal) {
+                    to_visit.extend(children);
+                }
             }
         }
 
-        NodesDistanceTo::from_distances(dists)
+        dists
     }
 
     pub fn all_successors(&self) -> HashMap<NodeType, Vec<NodeType>> {
@@ -312,45 +318,26 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
     /// Return a map of node to topographical path lengths to given target,
     /// for all nodes distal to that target
     pub fn nodes_order_from(&self, target: NodeType) -> NodesDistanceTo<NodeType, usize> {
-        // todo: shared logic with nodes_distance_to, how to factor out?
-        let successors = self.all_successors();
 
-        let mut orders: HashMap<NodeType, usize> = HashMap::new();
-        orders.insert(target, 0);
-
-        let mut to_visit = successors.get(&target).unwrap_or(&vec![]).to_owned();
-
-        while !to_visit.is_empty() {
-            let distal = to_visit
-                .pop()
-                .expect("unreachable: popped from non-empty vec");
-            let proximal = self.edges.get(&distal).expect("unreachable");
-            let dist_to_prox = *orders.get(proximal).expect("unreachable");
-
-            orders.insert(distal, dist_to_prox + 1);
-
-            for next in successors.get(&distal).unwrap_or(&vec![]).iter() {
-                to_visit.push(*next);
-            }
-        }
+        let orders = self.nodes_edge_metric(target, |_, _| 1);
 
         NodesDistanceTo::from_orders(orders)
     }
 
     /// Return a new arbor rooted at the given node and containing all nodes distal to it.
     pub fn sub_arbor(&self, new_root: NodeType) -> Arbor<NodeType> {
-        let succs = self.all_successors();
-        let mut to_visit = vec![new_root];
 
+        let successors = self.all_successors();
+        let mut to_visit = vec![new_root];
         let mut edges: HashMap<NodeType, NodeType> = HashMap::new();
 
-        while !to_visit.is_empty() {
-            let proximal = to_visit
-                .pop()
-                .expect("Impossible: failed to pop from non-empty Vec");
-            for distal in succs.get(&proximal).unwrap_or(&vec![]).iter() {
-                edges.insert(distal.clone(), proximal);
-                to_visit.push(distal.clone());
+        while let Some(proximal) = to_visit.pop() {
+
+            if let Some(children) = successors.get(&proximal) {
+                for distal in children {
+                    edges.insert(distal.clone(), proximal);
+                }
+                to_visit.extend(children);
             }
         }
 
@@ -362,22 +349,17 @@ impl<NodeType: Hash + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Remove given node and all nodes distal to it.
     pub fn prune(&mut self, cut: NodeType) -> &Arbor<NodeType> {
-        // shared logic with sub_arbor
         // todo: DownstreamEdges iterator
 
         let successors = self.all_successors();
-
         let mut to_visit = vec![cut];
 
-        while !to_visit.is_empty() {
-            let to_remove = to_visit
-                .pop()
-                .expect("unreachable: popped from non-empty vec");
+        while let Some(to_remove) = to_visit.pop() {
 
             self.edges.remove(&to_remove);
 
-            for next in successors.get(&to_remove).unwrap_or(&vec![]).iter() {
-                to_visit.push(*next);
+            if let Some(children) = successors.get(&to_remove) {
+                to_visit.extend(children);
             }
         }
         self
@@ -474,6 +456,16 @@ mod tests {
     }
 
     #[test]
+    fn prune() {
+        let mut arbor = make_arbor();
+        arbor.prune(3);
+
+        assert_eq!(arbor.root.expect("no root"), 1);
+        let expected_edges = vec![(2, 1)].into_iter().collect();
+        assert_eq!(arbor.edges, expected_edges);
+    }
+
+    #[test]
     fn nodes_order_from() {
         let arbor = make_arbor();
 
@@ -482,6 +474,7 @@ mod tests {
             .into_iter()
             .collect();
 
+        let expected = NodesDistanceTo::from_orders(expected);
         assert_eq!(orders, expected);
     }
 
@@ -554,6 +547,7 @@ mod tests {
             .into_iter()
             .collect();
 
+        let expected = NodesDistanceTo::from_distances(expected);
         assert_eq!(orders, expected);
     }
 

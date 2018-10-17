@@ -3,6 +3,7 @@ use num::FromPrimitive;
 use serde::Deserialize;
 use serde::Deserializer;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use utils::Location;
 use Arbor;
@@ -17,7 +18,7 @@ enum ConnectorRelation {
 }
 }
 
-struct ArborLocations<NodeType: Hash, F: Float> {
+struct ArborLocations<NodeType: Hash + Clone, F: Float> {
     arbor: Arbor<NodeType>,
     locations: HashMap<NodeType, Location<F>>,
 }
@@ -185,7 +186,7 @@ pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     locations: HashMap<NodeType, Location<F>>,
 }
 
-impl<NodeType: Hash + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
+impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
     fn new() -> ArborParser<NodeType, F> {
         ArborParser {
             arbor: Arbor::new(),
