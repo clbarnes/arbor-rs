@@ -6,7 +6,6 @@ use bencher::Bencher;
 
 use arbor::*;
 
-
 fn make_arbor() -> Arbor<u64> {
     let mut arbor = Arbor::new();
 

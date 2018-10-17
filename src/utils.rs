@@ -1,7 +1,4 @@
-use fnv::{
-    FnvHashSet,
-    FnvHashMap,
-};
+use fnv::{FnvHashMap, FnvHashSet};
 use num::traits::float::Float;
 use num::traits::real::Real;
 use num::Integer;
@@ -27,7 +24,7 @@ pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct Location<F: Float> {
     pub x: F,
     pub y: F,
@@ -58,7 +55,7 @@ impl<F: Float> Location<F> {
     }
 }
 
-pub struct RootwardPath<'a, NodeType: 'a + Hash + Clone> {
+pub struct RootwardPath<'a, NodeType: 'a + Hash + Clone + Eq> {
     arbor: &'a Arbor<NodeType>,
     next: Option<NodeType>,
 }
@@ -94,31 +91,7 @@ impl<'a, NodeType: Copy + Debug + Hash + Eq + Ord> Iterator for RootwardPath<'a,
     }
 }
 
-pub struct NodesIterator<'a, NodeType: 'a + Hash + Clone> {
-    arbor: &'a Arbor<NodeType>,
-    children_iter: Keys<'a, NodeType, NodeType>,
-    root: Option<NodeType>,
-}
-
-impl<'a, NodeType: Hash + Eq + Copy + Ord> NodesIterator<'a, NodeType> {
-    pub fn new(arbor: &Arbor<NodeType>) -> NodesIterator<NodeType> {
-        NodesIterator {
-            arbor,
-            children_iter: arbor.edges.keys(),
-            root: arbor.root,
-        }
-    }
-}
-
-impl<'a, NodeType: Copy + Hash + Eq + Ord> Iterator for NodesIterator<'a, NodeType> {
-    type Item = NodeType;
-
-    fn next(&mut self) -> Option<NodeType> {
-        self.children_iter.next().cloned().or_else(|| self.root.take())
-    }
-}
-
-pub struct Partitions<'a, NodeType: 'a + Hash + Clone> {
+pub struct Partitions<'a, NodeType: 'a + Hash + Clone + Eq> {
     arbor: &'a Arbor<NodeType>,
     visited: FnvHashSet<NodeType>, // todo: use branches instead, save memory
     ends: Vec<NodeType>,
@@ -147,22 +120,21 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
 
     fn next(&mut self) -> Option<Vec<NodeType>> {
         // todo: check whether this actually needs a true longest partition as per JS
-        self.ends.pop()
-            .map(|start| {
-                let mut path: Vec<NodeType> = Vec::new();
-                for node in self
-                    .arbor
-                    .path_to_root(start)
-                    .expect("end must be in arbor")
-                {
-                    path.push(node);
-                    if self.visited.contains(&node) {
-                        break;
-                    }
-                    self.visited.insert(node);
+        self.ends.pop().map(|start| {
+            let mut path: Vec<NodeType> = Vec::new();
+            for node in self
+                .arbor
+                .path_to_root(start)
+                .expect("end must be in arbor")
+            {
+                path.push(node);
+                if self.visited.contains(&node) {
+                    break;
                 }
-                path
-            })
+                self.visited.insert(node);
+            }
+            path
+        })
     }
 }
 
@@ -172,7 +144,7 @@ pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
     max: D,
 }
 
-impl<NodeType:  Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
+impl<NodeType: Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
     pub fn from_orders(orders: FnvHashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
         let max = orders.values().max().unwrap().to_owned();
         NodesDistanceTo {
@@ -182,7 +154,7 @@ impl<NodeType:  Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType,
     }
 }
 
-impl<NodeType:  Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
+impl<NodeType: Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
     pub fn from_distances(distances: FnvHashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
         let mut max: F = Zero::zero();
 

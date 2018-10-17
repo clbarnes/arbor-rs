@@ -11,6 +11,7 @@ use Arbor;
 enum_from_primitive! {
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 enum ConnectorRelation {
+    // 0 = presynaptic, 1 = postsynaptic, 2 = gap junction, -1 = other:
     Presynaptic = 0,
     Postsynaptic = 1,
     GapJunction = 2,
@@ -18,7 +19,7 @@ enum ConnectorRelation {
 }
 }
 
-struct ArborLocations<NodeType: Hash + Clone, F: Float> {
+struct ArborLocations<NodeType: Hash + Clone + Eq, F: Float> {
     arbor: Arbor<NodeType>,
     locations: FnvHashMap<NodeType, Location<F>>,
 }
@@ -96,8 +97,10 @@ trait ArborParseable<C: DescribesConnector> {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq)]
 struct Treenode {
+    // todo: cannot derive Deserialize because Location needs to be collected
+    // [id, parent_id, user_id, location_x, location_y, location_z, radius, confidence]
     id: u64,
     parent_id: Option<u64>,
     user_id: u64,
@@ -106,8 +109,10 @@ struct Treenode {
     confidence: u8,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 struct Connector {
+    // todo: cannot derive Deserialize because Arbor and SkeletonConnectors use different ordering,
+    // and need to serialise confidences
     treenode_id: u64,
     connector_id: u64,
     relation: ConnectorRelation,
@@ -115,16 +120,33 @@ struct Connector {
 
 #[derive(Deserialize, Debug)]
 struct SkeletonConnector {
+    // todo: cannot derive Deserialize because Location needs to be collected
+    // 0 = presynaptic, 1 = postsynaptic, 2 = gap junction, -1 = other:
+    //
+    //    [treenode_id, connector_id, 0|1|2|-1, location_x, location_y, location_z]
     this: Connector,
     location: Location<f64>,
 }
 
 #[derive(Deserialize, Debug)]
 struct SkeletonResponse {
+    // Only deserializes for with_history=false, with_merge_history=false, with_reviews=false,
+    // with_annotations=false, with_user_info=false
+    //
+    // [[nodes], [connectors], {nodeID: [tags]}]
+    //
+    // Each element in the [nodes] array has the following form:
+    //
+    //    [id, parent_id, user_id, location_x, location_y, location_z, radius, confidence].
+    //
+    //Each element in the [connectors] array has the following form, with the
+    //    third element representing the connector link as 0 = presynaptic, 1 =
+    //    postsynaptic, 2 = gap junction, -1 = other:
+    //
+    //    [treenode_id, connector_id, 0|1|2|-1, location_x, location_y, location_z]
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
-    tags: FnvHashMap<u64, Vec<String>>, // not sure what's in this dict
-                                     // conditionally has a bunch of other stuff?
+    tags: FnvHashMap<String, Vec<u64>>,
 }
 
 impl ArborParseable<SkeletonConnector> for SkeletonResponse {
@@ -147,6 +169,11 @@ impl ArborParseable<ArborConnector> for ArborResponse {
 
 #[derive(Deserialize, Debug)]
 struct ArborConnector {
+    // todo: cannot derive Deserialize because fields are out of order and in the same array
+    //[treenode_id, confidence,
+    //     connector_id,
+    //     confidence, treenode_id, skeleton_id,
+    //     relation_id, relation_id]
     this: Connector,
     other: Connector,
 }
@@ -169,9 +196,22 @@ impl DescribesConnector for SkeletonConnector {
 
 #[derive(Deserialize, Debug)]
 struct ArborResponse {
+    // Only deserializes for with_time=false
+    //
+    // [[nodes], [connections], {nodeID: [tags]}]
+    //
+    // Each element in the [nodes] array has the following form:
+    //
+    //    [id, parent_id, user_id, location_x, location_y, location_z, radius, confidence].
+    //
+    // Each element in the [connections] array has the following form:
+    //[treenode_id, confidence,
+    //     connector_id,
+    //     confidence, treenode_id, skeleton_id,
+    //     relation_id, relation_id]
     treenodes: Vec<Treenode>,
     connectors: Vec<ArborConnector>,
-    tags: FnvHashMap<u64, Vec<String>>,
+    tags: FnvHashMap<String, Vec<u64>>,
 }
 
 enum Response {
@@ -179,11 +219,12 @@ enum Response {
     Arbor(ArborResponse),
 }
 
+#[derive(PartialEq, Debug)]
 pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
-    arbor: Arbor<NodeType>,
-    inputs: FnvHashMap<NodeType, usize>,
-    outputs: FnvHashMap<NodeType, usize>,
-    locations: FnvHashMap<NodeType, Location<F>>,
+    pub arbor: Arbor<NodeType>,
+    pub inputs: FnvHashMap<NodeType, usize>,
+    pub outputs: FnvHashMap<NodeType, usize>,
+    pub locations: FnvHashMap<NodeType, Location<F>>,
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
@@ -225,4 +266,145 @@ impl ArborParser<u64, f64> {
     }
 }
 
-// todo: implement Deserialize for ArborResponse and SkeletonResponse
+// todo: implement Deserialize for ArborResponse
+// SkeletonResponse should be fine?
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use std::fs::File;
+
+    //            1
+    //            |
+    //            2
+    //            |
+    // 13<-(101)<-3
+    //            | \
+    //            4  6<-(103)<-16
+    //            |   \
+    // 15<-(102)<-5    7<-(104)<-17
+
+    fn small_arbor() -> Arbor<u64> {
+        let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
+        let mut arbor = Arbor::new();
+        arbor.add_edges(edges);
+        arbor
+    }
+
+    fn small_arborparser() -> ArborParser<u64, f64> {
+        let mut locations: FnvHashMap<u64, Location<f64>> = FnvHashMap::default();
+        for idx in 1..8 {
+            locations.insert(
+                idx as u64,
+                Location {
+                    x: idx as f64,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            );
+        }
+        let inputs: FnvHashMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
+        let outputs: FnvHashMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
+
+        ArborParser {
+            arbor: small_arbor(),
+            locations,
+            inputs,
+            outputs,
+        }
+    }
+
+    fn get_arbor_str() -> &'static str {
+        // todo: read from file instead
+        "[
+          [
+            [1, null, 1001, 1, 0, 0, -1, 5],
+            [2, 1, 1001, 2, 0, 0, -1, 5],
+            [3, 2, 1001, 3, 0, 0, -1, 5],
+            [4, 3, 1001, 4, 0, 0, -1, 5],
+            [5, 4, 1001, 5, 0, 0, -1, 5],
+            [6, 3, 1001, 6, 0, 0, -1, 5],
+            [7, 6, 1001, 7, 0, 0, -1, 5]
+          ],
+          [
+            [3, 5, 101, 5, 13, 10001, 0, 1],
+            [5, 5, 102, 5, 15, 10002, 0, 1],
+            [6, 5, 103, 5, 16, 10003, 1, 0],
+            [7, 5, 104, 5, 17, 10004, 1, 0]
+          ],
+          {
+            \"ends\": [7, 5],
+            \"soma\": [1],
+            \"mitochondrion\": [2, 4]
+          }
+        ]"
+    }
+
+    fn get_skeleton_str() -> &'static str {
+        // todo: read from file instead
+        "[
+          [
+            [1, null, 1001, 1, 0, 0, -1, 5],
+            [2, 1, 1001, 2, 0, 0, -1, 5],
+            [3, 2, 1001, 3, 0, 0, -1, 5],
+            [4, 3, 1001, 4, 0, 0, -1, 5],
+            [5, 4, 1001, 5, 0, 0, -1, 5],
+            [6, 3, 1001, 6, 0, 0, -1, 5],
+            [7, 6, 1001, 7, 0, 0, -1, 5]
+          ],
+          [
+            [3, 101, 0, 3, 1, 0],
+            [5, 102, 0, 5, 1, 0],
+            [6, 103, 1, 6, 1, 0],
+            [7, 104, 1, 7, 1, 0]
+          ],
+          {
+            \"ends\": [7, 5],
+            \"soma\": [1],
+            \"mitochondrion\": [2, 4]
+          }
+        ]"
+    }
+
+    #[test]
+    fn deser_skeleton_response() {
+        let s = get_skeleton_str();
+        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
+    }
+
+    #[test]
+    fn skeleton_response_to_parser() {
+        let s = get_skeleton_str();
+        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let ap = skel_response.to_arborparser();
+    }
+
+    #[test]
+    fn parser_from_skeleton_response() {
+        let s = get_skeleton_str();
+        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let ap = ArborParser::from_response(Response::Skeleton(skel_response));
+    }
+
+    #[test]
+    fn deser_arbor_response() {
+        let s = get_arbor_str();
+        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
+    }
+
+    #[test]
+    fn arbor_response_to_parser() {
+        let s = get_arbor_str();
+        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let ap = arbor_response.to_arborparser();
+    }
+
+    #[test]
+    fn parser_from_arbor_response() {
+        let s = get_arbor_str();
+        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let ap = ArborParser::from_response(Response::Arbor(arbor_response));
+    }
+
+}

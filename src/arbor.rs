@@ -2,22 +2,20 @@ use utils::{
     cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
 };
 
-use fnv::{
-    FnvHashSet,
-    FnvHashMap,
-};
+use fnv::{FnvHashMap, FnvHashSet};
 use num::traits::float::Float;
 use num::Zero;
 use std::fmt::Debug;
 use std::hash::Hash;
-use utils::NodesIterator;
+use std::iter::Chain;
+use std::collections::hash_map::Keys;
+use std::option::Iter;
 
-#[derive(Clone)]
-pub struct Arbor<NodeType: Hash + Clone> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arbor<NodeType: Hash + Clone + Eq> {
     pub(crate) edges: FnvHashMap<NodeType, NodeType>,
     pub root: Option<NodeType>,
 }
-
 
 impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Creates an empty arbor
@@ -109,7 +107,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     fn find_root(&self) -> Result<NodeType, &'static str> {
-
         let distals: FnvHashSet<NodeType> = self.edges.keys().cloned().collect();
         let proximals: FnvHashSet<NodeType> = self.edges.values().cloned().collect();
 
@@ -188,7 +185,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         target: NodeType,
         positions: FnvHashMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
-
         let msg = "positions did not contain all required nodes";
         let distance_fn = |n1: NodeType, n2: NodeType| {
             positions
@@ -208,14 +204,12 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         target: NodeType,
         distance_fn: F,
     ) -> FnvHashMap<NodeType, T> {
-
         let successors = self.all_successors();
 
         let mut dists: FnvHashMap<NodeType, T> = FnvHashMap::default();
         dists.insert(target, Zero::zero());
 
         if let Some(to_visit) = successors.get(&target) {
-
             let mut to_visit = to_visit.to_owned();
             while let Some(distal) = to_visit.pop() {
                 let proximal = self.edges[&distal];
@@ -259,9 +253,13 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
         for (node, degree) in out_degrees.iter() {
             match degree {
-                0 => { ends.insert(node.clone()); },
+                0 => {
+                    ends.insert(node.clone());
+                }
                 1 => (),
-                _ => { branches.insert(node.clone(), degree.clone()); }
+                _ => {
+                    branches.insert(node.clone(), degree.clone());
+                }
             };
         }
 
@@ -308,8 +306,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     /// Iterate over nodes
-    pub fn nodes(&self) -> NodesIterator<NodeType> {
-        NodesIterator::new(self)
+    pub fn nodes(&self) -> Chain<Keys<NodeType, NodeType>, Iter<NodeType>> {
+        self.edges.keys().chain(self.root.iter())
     }
 
     /// Return a map of node to topographical path lengths to the root, for all nodes
@@ -320,7 +318,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Return a map of node to topographical path lengths to given target,
     /// for all nodes distal to that target
     pub fn nodes_order_from(&self, target: NodeType) -> NodesDistanceTo<NodeType, usize> {
-
         let orders = self.nodes_edge_metric(target, |_, _| 1);
 
         NodesDistanceTo::from_orders(orders)
@@ -328,13 +325,11 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Return a new arbor rooted at the given node and containing all nodes distal to it.
     pub fn sub_arbor(&self, new_root: NodeType) -> Arbor<NodeType> {
-
         let successors = self.all_successors();
         let mut to_visit = vec![new_root];
         let mut edges: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
 
         while let Some(proximal) = to_visit.pop() {
-
             if let Some(children) = successors.get(&proximal) {
                 for distal in children {
                     edges.insert(distal.clone(), proximal);
@@ -357,7 +352,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         let mut to_visit = vec![cut];
 
         while let Some(to_remove) = to_visit.pop() {
-
             self.edges.remove(&to_remove);
 
             if let Some(children) = successors.get(&to_remove) {
