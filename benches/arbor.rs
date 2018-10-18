@@ -2,6 +2,8 @@ extern crate arbor;
 #[macro_use]
 extern crate bencher;
 
+use std::vec::Vec;
+
 use bencher::Bencher;
 
 use arbor::*;
@@ -24,6 +26,20 @@ fn make_arbor() -> Arbor<u64> {
     arbor
 }
 
+fn bench_branch_ends(b: &mut Bencher) {
+    let arbor = make_arbor();
+    b.iter(|| {
+        arbor.find_branch_and_end_nodes()
+    })
+}
+
+fn bench_partitions(b: &mut Bencher) {
+    let arbor = make_arbor();
+    b.iter(|| {
+        let _v: Vec<Vec<_>> = arbor.partition().collect();  // do I need to assign this?
+    })
+}
+
 fn bench_reroot(b: &mut Bencher) {
     let arbor = make_arbor();
 
@@ -32,5 +48,5 @@ fn bench_reroot(b: &mut Bencher) {
     });
 }
 
-benchmark_group!(arbor, bench_reroot);
+benchmark_group!(arbor, bench_reroot, bench_branch_ends, bench_partitions);
 benchmark_main!(arbor);
