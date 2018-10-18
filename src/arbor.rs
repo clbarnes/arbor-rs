@@ -5,10 +5,10 @@ use utils::{
 use fnv::{FnvHashMap, FnvHashSet};
 use num::traits::float::Float;
 use num::Zero;
+use std::collections::hash_map::Keys;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::Chain;
-use std::collections::hash_map::Keys;
 use std::option::Iter;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -17,21 +17,26 @@ pub struct Arbor<NodeType: Hash + Clone + Eq> {
     pub root: Option<NodeType>,
 }
 
-impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
-    /// Creates an empty arbor
-    pub fn new() -> Arbor<NodeType> {
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Default for Arbor<NodeType> {
+    /// Create an empty arbor
+    fn default() -> Self {
         Arbor {
             edges: FnvHashMap::default(),
             root: None,
         }
     }
+}
 
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Creates a populated arbor and checks that it is valid
-    pub fn from<'a>(
+    pub fn new(
         edges: FnvHashMap<NodeType, NodeType>,
         root: Option<NodeType>,
     ) -> Result<Arbor<NodeType>, &'static str> {
-        let a = Arbor { edges, root };
+        let mut a = Arbor { edges, root };
+        if root.is_none() {
+            a.root = Some(a.find_root()?);
+        }
         a.check_valid()?;
         Ok(a)
     }
@@ -378,14 +383,14 @@ mod tests {
 
     fn make_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
-        let mut arbor = Arbor::new();
+        let mut arbor = Arbor::default();
         arbor.add_edges(edges);
         arbor
     }
 
     #[test]
     fn add_edges() {
-        let mut arbor = Arbor::new();
+        let mut arbor = Arbor::default();
         arbor.add_edges(vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3]);
         assert_eq!(arbor.root.unwrap(), 1);
         assert_eq!(arbor.edges.len(), 6);
@@ -393,7 +398,7 @@ mod tests {
 
     #[test]
     fn add_path() {
-        let mut arbor = Arbor::new();
+        let mut arbor = Arbor::default();
         arbor.add_path(vec![1, 2, 3, 4, 5]);
         assert_eq!(arbor.root.unwrap(), 1);
         arbor.add_path(vec![3, 6, 7]);

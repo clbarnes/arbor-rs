@@ -7,7 +7,7 @@ use bencher::Bencher;
 use arbor::*;
 
 fn make_arbor() -> Arbor<u64> {
-    let mut arbor = Arbor::new();
+    let mut arbor = Arbor::default();
 
     let mut max_id: u64 = 1000;
     let branch_len = 1000;

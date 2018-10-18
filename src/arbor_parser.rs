@@ -52,6 +52,7 @@ trait ArborParseable<C: DescribesConnector> {
 
         for connector_info in self.connectors().iter() {
             let connector = connector_info.this();
+            // todo: must be a way to factor these very similar arms
             match connector.relation {
                 ConnectorRelation::Postsynaptic => {
                     let mut entry = inputs.entry(connector.treenode_id).or_insert(0);
@@ -91,7 +92,7 @@ trait ArborParseable<C: DescribesConnector> {
         }
 
         Ok(ArborLocations {
-            arbor: Arbor::from(edges, root)?,
+            arbor: Arbor::new(edges, root)?,
             locations,
         })
     }
@@ -179,7 +180,7 @@ struct ArborConnector {
     this_confidence: u8,
     other: Connector,
     other_confidence: u8,
-    other_skeleton_id: u64
+    other_skeleton_id: u64,
 }
 
 trait DescribesConnector {
@@ -220,6 +221,7 @@ struct ArborResponse {
 }
 
 enum Response {
+    // todo: is this even necessary? They both impl ArborParseable and so are treated the same by callers
     Skeleton(SkeletonResponse),
     Arbor(ArborResponse),
 }
@@ -232,16 +234,18 @@ pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     pub locations: FnvHashMap<NodeType, Location<F>>,
 }
 
-impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
-    fn new() -> ArborParser<NodeType, F> {
+impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> Default for ArborParser<NodeType, F> {
+    fn default() -> ArborParser<NodeType, F> {
         ArborParser {
-            arbor: Arbor::new(),
+            arbor: Arbor::default(),
             inputs: FnvHashMap::default(),
             outputs: FnvHashMap::default(),
             locations: FnvHashMap::default(),
         }
     }
+}
 
+impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
     fn create_synapse_map(&self) -> FnvHashMap<NodeType, usize> {
         let mut out: FnvHashMap<NodeType, usize> = FnvHashMap::default();
 
@@ -263,13 +267,21 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 }
 
 impl ArborParser<u64, f64> {
-    fn from_response(response: Response) -> Result<ArborParser<u64, f64>, &'static str> {
+    fn new(response: Response) -> Result<ArborParser<u64, f64>, &'static str> {
+        // todo: must be a way to do this with traits
         match response {
-            Response::Skeleton(r) => r.to_arborparser(),
             Response::Arbor(r) => r.to_arborparser(),
+            Response::Skeleton(r) => r.to_arborparser(),
         }
     }
 }
+
+// todo: something like this should be possible
+//impl<C: DescribesConnector, P: ArborParseable<C>> ArborParser<u64, f64> {
+//    fn new(response: P) -> Result<ArborParser<u64, f64>, &'static str> {
+//        P.to_arborparser()
+//    }
+//}
 
 // todo: implement Deserialize for everything
 
@@ -291,7 +303,7 @@ mod tests {
 
     fn small_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
-        let mut arbor = Arbor::new();
+        let mut arbor = Arbor::default();
         arbor.add_edges(edges);
         arbor
     }
@@ -378,17 +390,10 @@ mod tests {
     }
 
     #[test]
-    fn skeleton_response_to_parser() {
-        let s = get_skeleton_str();
-        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = skel_response.to_arborparser();
-    }
-
-    #[test]
     fn parser_from_skeleton_response() {
         let s = get_skeleton_str();
         let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = ArborParser::from_response(Response::Skeleton(skel_response));
+        let ap = ArborParser::new(Response::Skeleton(skel_response));
     }
 
     #[test]
@@ -398,16 +403,9 @@ mod tests {
     }
 
     #[test]
-    fn arbor_response_to_parser() {
-        let s = get_arbor_str();
-        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = arbor_response.to_arborparser();
-    }
-
-    #[test]
     fn parser_from_arbor_response() {
         let s = get_arbor_str();
         let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = ArborParser::from_response(Response::Arbor(arbor_response));
+        let ap = ArborParser::new(Response::Arbor(arbor_response));
     }
 }
