@@ -134,6 +134,7 @@ struct SkeletonResponse {
     // with_annotations=false, with_user_info=false
     //
     // [[nodes], [connectors], {nodeID: [tags]}]
+    //                          ^should be {tag_name: [skeleton_ids]}?
     //
     // Each element in the [nodes] array has the following form:
     //
@@ -175,7 +176,10 @@ struct ArborConnector {
     //     confidence, treenode_id, skeleton_id,
     //     relation_id, relation_id]
     this: Connector,
+    this_confidence: u8,
     other: Connector,
+    other_confidence: u8,
+    other_skeleton_id: u64
 }
 
 trait DescribesConnector {
@@ -199,6 +203,7 @@ struct ArborResponse {
     // Only deserializes for with_time=false
     //
     // [[nodes], [connections], {nodeID: [tags]}]
+    //                           ^should be {tag_name: [skeleton_ids]}?
     //
     // Each element in the [nodes] array has the following form:
     //
@@ -266,8 +271,7 @@ impl ArborParser<u64, f64> {
     }
 }
 
-// todo: implement Deserialize for ArborResponse
-// SkeletonResponse should be fine?
+// todo: implement Deserialize for everything
 
 #[cfg(test)]
 mod tests {
@@ -406,5 +410,4 @@ mod tests {
         let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
         let ap = ArborParser::from_response(Response::Arbor(arbor_response));
     }
-
 }
