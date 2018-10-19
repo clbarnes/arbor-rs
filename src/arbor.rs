@@ -10,6 +10,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::Chain;
 use std::option::Iter;
+use utils::Toposort;
+use utils::DepthFirstSearch;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Arbor<NodeType: Hash + Clone + Eq> {
@@ -232,10 +234,10 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn all_successors(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
-        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = FnvHashMap::default();
+        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = self.nodes().map(|n| (*n, Vec::new())).collect();
+
         for (succ, pred) in self.edges.iter() {
-            let entry = out.entry(pred.clone()).or_insert(Vec::new());
-            entry.push(succ.clone());
+            out.entry(*pred).and_modify(|v| v.push(*succ));
         }
         out
     }
@@ -244,19 +246,19 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         self.edges.keys().cloned().collect()
     }
 
-    pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
-        let mut out_degrees: FnvHashMap<NodeType, usize> = FnvHashMap::default();
-        for (distal, proximal) in self.edges.iter() {
-            out_degrees.entry(*distal).or_insert(0);
-
-            let prox_entry = out_degrees.entry(*proximal).or_insert(0);
-            *prox_entry += 1
+    pub fn out_degrees(&self) -> FnvHashMap<NodeType, usize> {
+        let mut degree: FnvHashMap<NodeType, usize> = self.nodes().map(|n| (*n, 0)).collect();
+        for proximal in self.edges.values() {
+            degree.entry(*proximal).and_modify(|c| *c += 1);
         }
+        degree
+    }
 
+    pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
         let mut branches: FnvHashMap<NodeType, usize> = FnvHashMap::default();
         let mut ends: FnvHashSet<NodeType> = FnvHashSet::default();
 
-        for (node, degree) in out_degrees.iter() {
+        for (node, degree) in self.out_degrees().iter() {
             match degree {
                 0 => {
                     ends.insert(node.clone());
@@ -364,6 +366,18 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             }
         }
         self
+    }
+
+    fn toposort(&self) -> Toposort<NodeType> {
+        Toposort::new(self)
+    }
+
+    fn dfs(&self, root: NodeType) -> DepthFirstSearch<NodeType> {
+        DepthFirstSearch::new(self, root)
+    }
+
+    fn dfs_from_root(&self) -> DepthFirstSearch<NodeType> {
+        DepthFirstSearch::from_root(self)
     }
 }
 
@@ -564,5 +578,12 @@ mod tests {
         assert_eq!(partitions.len(), 2);
         assert_eq!(partitions[0], vec![7, 6, 3, 2, 1]);
         assert_eq!(partitions[1], vec![5, 4, 3]);
+    }
+
+    #[test]
+    fn toposort() {
+        let arbor = make_arbor();
+        let sorted: Vec<u64> = arbor.toposort().collect();
+        assert_eq!(sorted, vec![1, 2, 3, 6, 7, 4, 5]);
     }
 }

@@ -26,6 +26,23 @@ fn make_arbor() -> Arbor<u64> {
     arbor
 }
 
+// benchmarks requiring cloning
+
+fn bench_clone(b: &mut Bencher) {
+    let arbor = make_arbor();
+    b.iter(|| {arbor.clone()})
+}
+
+fn bench_reroot(b: &mut Bencher) {
+    let arbor = make_arbor();
+
+    b.iter(|| {
+        arbor.clone().reroot(500);
+    });
+}
+
+// others
+
 fn bench_branch_ends(b: &mut Bencher) {
     let arbor = make_arbor();
     b.iter(|| {
@@ -40,13 +57,17 @@ fn bench_partitions(b: &mut Bencher) {
     })
 }
 
-fn bench_reroot(b: &mut Bencher) {
+fn bench_successors(b: &mut Bencher) {
     let arbor = make_arbor();
-
-    b.iter(|| {
-        arbor.clone().reroot(500);
-    });
+    b.iter(|| { arbor.all_successors() })
 }
 
-benchmark_group!(arbor, bench_reroot, bench_branch_ends, bench_partitions);
-benchmark_main!(arbor);
+fn bench_degrees(b: &mut Bencher) {
+    let arbor = make_arbor();
+    b.iter(|| { arbor.out_degrees() })
+}
+
+// cloning
+benchmark_group!(clone, bench_clone, bench_reroot);
+benchmark_group!(noclone, bench_branch_ends, bench_partitions, bench_successors, bench_degrees);
+benchmark_main!(clone, noclone);
