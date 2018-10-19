@@ -10,8 +10,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::Chain;
 use std::option::Iter;
-use utils::Toposort;
 use utils::DepthFirstSearch;
+use utils::Toposort;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Arbor<NodeType: Hash + Clone + Eq> {
@@ -211,30 +211,24 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         target: NodeType,
         distance_fn: F,
     ) -> FnvHashMap<NodeType, T> {
-        let successors = self.all_successors();
-
         let mut dists: FnvHashMap<NodeType, T> = FnvHashMap::default();
-        dists.insert(target, Zero::zero());
 
-        if let Some(to_visit) = successors.get(&target) {
-            let mut to_visit = to_visit.to_owned();
-            while let Some(distal) = to_visit.pop() {
-                let proximal = self.edges[&distal];
-                let dist_to_prox = dists[&proximal].clone();
-
-                dists.insert(distal, dist_to_prox + distance_fn(proximal, distal));
-
-                if let Some(children) = successors.get(&distal) {
-                    to_visit.extend(children);
+        for (distal, proximal) in self.dfs(target) {
+            match proximal {
+                Some(p) => {
+                    let dist_to_prox = dists[&p].clone();
+                    dists.insert(distal, dist_to_prox + distance_fn(p, distal))
                 }
-            }
+                None => dists.insert(distal, distance_fn(distal, distal)),
+            };
         }
 
         dists
     }
 
     pub fn all_successors(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
-        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = self.nodes().map(|n| (*n, Vec::new())).collect();
+        let mut out: FnvHashMap<NodeType, Vec<NodeType>> =
+            self.nodes().map(|n| (*n, Vec::new())).collect();
 
         for (succ, pred) in self.edges.iter() {
             out.entry(*pred).and_modify(|v| v.push(*succ));
@@ -332,16 +326,10 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Return a new arbor rooted at the given node and containing all nodes distal to it.
     pub fn sub_arbor(&self, new_root: NodeType) -> Arbor<NodeType> {
-        let successors = self.all_successors();
-        let mut to_visit = vec![new_root];
         let mut edges: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
-
-        while let Some(proximal) = to_visit.pop() {
-            if let Some(children) = successors.get(&proximal) {
-                for distal in children {
-                    edges.insert(distal.clone(), proximal);
-                }
-                to_visit.extend(children);
+        for (distal, proximal) in self.dfs(new_root) {
+            if let Some(p) = proximal {
+                edges.insert(distal, p);
             }
         }
 
@@ -353,31 +341,21 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Remove given node and all nodes distal to it.
     pub fn prune(&mut self, cut: NodeType) -> &Arbor<NodeType> {
-        // todo: DownstreamEdges iterator
+        self.dfs(cut).map(|(d, _p)| self.edges.remove(&d)).last();
 
-        let successors = self.all_successors();
-        let mut to_visit = vec![cut];
-
-        while let Some(to_remove) = to_visit.pop() {
-            self.edges.remove(&to_remove);
-
-            if let Some(children) = successors.get(&to_remove) {
-                to_visit.extend(children);
-            }
-        }
         self
     }
 
-    fn toposort(&self) -> Toposort<NodeType> {
+    pub fn toposort(&self) -> Toposort<NodeType> {
         Toposort::new(self)
     }
 
-    fn dfs(&self, root: NodeType) -> DepthFirstSearch<NodeType> {
-        DepthFirstSearch::new(self, root)
+    pub fn dfs(&self, root: NodeType) -> DepthFirstSearch<NodeType> {
+        DepthFirstSearch::new(self, root).expect("Bad root") // todo: handle errors
     }
 
-    fn dfs_from_root(&self) -> DepthFirstSearch<NodeType> {
-        DepthFirstSearch::from_root(self)
+    pub fn dfs_from_root(&self) -> DepthFirstSearch<NodeType> {
+        DepthFirstSearch::from_root(self).expect("Bad root") // todo: handle errors
     }
 }
 

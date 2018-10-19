@@ -5,13 +5,13 @@ use num::Integer;
 use num::Zero;
 use serde::Deserialize;
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::hash_map::Keys;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 use std::ops::Sub;
 use Arbor;
-use std::collections::hash_map::Entry;
 
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();
@@ -148,16 +148,13 @@ pub struct Partitions<'a, NodeType: 'a + Hash + Clone + Eq> {
 impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Partitions<'a, NodeType> {
     pub fn new(arbor: &Arbor<NodeType>) -> Partitions<NodeType> {
         let branch_ends = arbor.find_branch_and_end_nodes();
-        let mut ends: Vec<NodeType> = branch_ends.ends
-            .iter()
-            .cloned()
-            .collect();
+        let mut ends: Vec<NodeType> = branch_ends.ends.iter().cloned().collect();
 
         ends.sort_unstable();
 
         Partitions {
             arbor,
-            branches: branch_ends.branches.keys().map(| k | (*k, false )).collect(),
+            branches: branch_ends.branches.keys().map(|k| (*k, false)).collect(),
             ends,
         }
     }
@@ -181,7 +178,7 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
                 if let Some(was_visited) = self.branches.remove(&node) {
                     self.branches.insert(node, true);
                     if was_visited {
-                        return path
+                        return path;
                     }
                 }
             }
@@ -301,12 +298,15 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> DepthFirstSearch<NodeType> {
         Self::new(arbor, arbor.root.expect("Arbor has no root"))
     }
 
-    pub fn new(arbor: &Arbor<NodeType>, root: NodeType) -> Result<DepthFirstSearch<NodeType>, &'static str> {
+    pub fn new(
+        arbor: &Arbor<NodeType>,
+        root: NodeType,
+    ) -> Result<DepthFirstSearch<NodeType>, &'static str> {
         let successors = arbor.all_successors();
         if successors.contains_key(&root) {
             Ok(DepthFirstSearch {
                 successors,
-                to_yield: vec![(root, None)]
+                to_yield: vec![(root, None)],
             })
         } else {
             Err("Given root is not in arbor")
