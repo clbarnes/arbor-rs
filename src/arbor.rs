@@ -219,7 +219,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
                     let dist_to_prox = dists[&p].clone();
                     dists.insert(distal, dist_to_prox + distance_fn(p, distal))
                 }
-                None => dists.insert(distal, distance_fn(distal, distal)),
+                None => dists.insert(distal, T::zero()),
             };
         }
 

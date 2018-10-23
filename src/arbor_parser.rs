@@ -1,6 +1,5 @@
 use fnv::FnvHashMap;
 use num::traits::float::Float;
-use num::FromPrimitive;
 use serde::Deserialize;
 use serde::Deserializer;
 use std::fmt::Debug;
@@ -9,31 +8,54 @@ use utils::Location;
 use Arbor;
 use serde::de::Visitor;
 use std::fmt;
+use serde::de;
 use serde::de::SeqAccess;
 use serde_json::Value;
+use std::result::Result::Ok;
+use std::result::Result::Err;
+use num::Integer;
 
-enum_from_primitive! {
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-enum ConnectorRelation {
+// todo: figure out strategy for access control
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ConnectorRelation {
     // 0 = presynaptic, 1 = postsynaptic, 2 = gap junction, -1 = other:
-    Presynaptic = 0,
-    Postsynaptic = 1,
-    GapJunction = 2,
-    Other = -1
-}
+    Presynaptic = 0,  // 0
+    Postsynaptic = 1,  // 1
+    GapJunction = 2,  // 2
+    Other = -1,  // -1
 }
 
-struct ArborLocations<NodeType: Hash + Clone + Eq, F: Float> {
+impl ConnectorRelation {
+    fn from_i64(number: i64) -> Result<ConnectorRelation, &'static str> {
+        match number {
+            0 => Ok(ConnectorRelation::Presynaptic),
+            1 => Ok(ConnectorRelation::Postsynaptic),
+            2 => Ok(ConnectorRelation::GapJunction),
+            -1 => Ok(ConnectorRelation::Other),
+            _ => Err("Number is not a known connector relation"),
+        }
+    }
+
+    fn from_json<E: de::Error>(value: Value) -> Result<ConnectorRelation, E> {
+        match value {
+            Value::Number(n) => ConnectorRelation::from_i64(n.as_i64().unwrap_or(-2)).map_err(de::Error::custom),
+            _ => Err(de::Error::custom("Value is not a number"))
+        }
+    }
+}
+
+pub struct ArborLocations<NodeType: Hash + Clone + Eq, F: Float> {
     arbor: Arbor<NodeType>,
     locations: FnvHashMap<NodeType, Location<F>>,
 }
 
-struct InputsOutputs<NodeType> {
+pub struct InputsOutputs<NodeType> {
     inputs: FnvHashMap<NodeType, usize>,
     outputs: FnvHashMap<NodeType, usize>,
 }
 
-trait ArborParseable<C: DescribesConnector> {
+pub trait ArborParseable<C: DescribesConnector> {
     fn connectors(&self) -> &Vec<C>;
 
     fn treenodes(&self) -> &Vec<Treenode>;
@@ -103,7 +125,7 @@ trait ArborParseable<C: DescribesConnector> {
 }
 
 #[derive(Debug, PartialEq)]
-struct Treenode {
+pub struct Treenode {
     // todo: cannot derive Deserialize because Location needs to be collected
     // [id, parent_id, user_id, location_x, location_y, location_z, radius, confidence]
     id: u64,
@@ -144,18 +166,18 @@ impl<'de> Deserialize<'de> for Treenode {
                 let confidence = seq.next_element()?
                     .ok_or_else(|| de::Error::invalid_length(7, &self))?;
 
-                Treenode {
+                Ok(Treenode {
                     id,
                     parent_id: match parent_id {
                         Value::Null => None,
-                        Value::Number(n) => n,
+                        Value::Number(n) => n.as_u64(),
                         _ => panic!("not a number"),  // todo: use de::Error::invalid_type
                     },
                     user_id,
                     location: Location {x,y,z},
                     radius,
                     confidence,
-                }
+                })
             }
         }
 
@@ -164,7 +186,7 @@ impl<'de> Deserialize<'de> for Treenode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Connector {
+pub struct Connector {
     // todo: cannot derive Deserialize because Arbor and SkeletonConnectors use different ordering,
     // and need to serialise confidences
     treenode_id: u64,
@@ -173,7 +195,7 @@ struct Connector {
 }
 
 #[derive(Debug)]
-struct SkeletonConnector {
+pub struct SkeletonConnector {
     // todo: cannot derive Deserialize because Location needs to be collected
     // 0 = presynaptic, 1 = postsynaptic, 2 = gap junction, -1 = other:
     //
@@ -208,23 +230,23 @@ impl<'de> Deserialize<'de> for SkeletonConnector {
                 let z = seq.next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
 
-                SkeletonConnector {
+                Ok(SkeletonConnector {
                     this: Connector {
                         treenode_id,
                         connector_id,
-                        relation: ConnectorRelation::from_isize(relation_id.as_usize()),
+                        relation: ConnectorRelation::from_json(relation_id)?,
                     },
                     location: Location {x,y,z},
-                }
+                })
             }
         }
 
-        deserializer.deserialize_any(TreenodeVisitor)
+        deserializer.deserialize_any(SkeletonConnectorVisitor)
     }
 }
 
 #[derive(Deserialize, Debug)]
-struct SkeletonResponse {
+pub struct SkeletonResponse {
     // Only deserializes for with_history=false, with_merge_history=false, with_reviews=false,
     // with_annotations=false, with_user_info=false
     //
@@ -243,6 +265,8 @@ struct SkeletonResponse {
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
     tags: FnvHashMap<String, Vec<u64>>,
+    reviews: Vec<Vec<Value>>,  // placeholders, ignored
+    annotations: Vec<Vec<Value>>,  // placeholders, ignored
 }
 
 impl ArborParseable<SkeletonConnector> for SkeletonResponse {
@@ -263,8 +287,8 @@ impl ArborParseable<ArborConnector> for ArborResponse {
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct ArborConnector {
+#[derive(Debug)]
+pub struct ArborConnector {
     // todo: cannot derive Deserialize because fields are out of order and in the same array
     //[treenode_id, confidence,
     //     connector_id,
@@ -307,29 +331,29 @@ impl<'de> Deserialize<'de> for ArborConnector {
                 let other_relation = seq.next_element()?
                     .ok_or_else(|| de::Error::invalid_length(7, &self))?;
 
-                ArborConnector {
+                Ok(ArborConnector {
                     this: Connector {
                         treenode_id: this_treenode_id,
                         connector_id,
-                        relation: ConnectorRelation::from_isize(this_relation.as_usize()?)?,
+                        relation: ConnectorRelation::from_json(this_relation)?,
                     },
                     this_confidence,
                     other: Connector {
                         treenode_id: other_treenode_id,
                         connector_id,
-                        relation: ConnectorRelation::from_isize(other_relation.as_usize()?)?,
+                        relation: ConnectorRelation::from_json(other_relation)?,
                     },
                     other_confidence,
                     other_skeleton_id,
-                }
+                })
             }
         }
 
-        deserializer.deserialize_any(TreenodeVisitor)
+        deserializer.deserialize_any(ArborConnectorVisitor)
     }
 }
 
-trait DescribesConnector {
+pub trait DescribesConnector {
     fn this(&self) -> Connector;
 }
 
@@ -346,7 +370,7 @@ impl DescribesConnector for SkeletonConnector {
 }
 
 #[derive(Deserialize, Debug)]
-struct ArborResponse {
+pub struct ArborResponse {
     // Only deserializes for with_time=false
     //
     // [[nodes], [connections], {nodeID: [tags]}]
@@ -429,13 +453,15 @@ impl ArborParser<u64, f64> {
 //    }
 //}
 
-// todo: implement Deserialize for everything
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json;
     use std::fs::File;
+    use std::io::Read;
+    use std::path::Path;
+    use std::path::PathBuf;
 
     //            1
     //            |
@@ -477,81 +503,76 @@ mod tests {
         }
     }
 
-    fn get_arbor_str() -> &'static str {
-        // todo: read from file instead
-        "[
-          [
-            [1, null, 1001, 1, 0, 0, -1, 5],
-            [2, 1, 1001, 2, 0, 0, -1, 5],
-            [3, 2, 1001, 3, 0, 0, -1, 5],
-            [4, 3, 1001, 4, 0, 0, -1, 5],
-            [5, 4, 1001, 5, 0, 0, -1, 5],
-            [6, 3, 1001, 6, 0, 0, -1, 5],
-            [7, 6, 1001, 7, 0, 0, -1, 5]
-          ],
-          [
-            [3, 5, 101, 5, 13, 10001, 0, 1],
-            [5, 5, 102, 5, 15, 10002, 0, 1],
-            [6, 5, 103, 5, 16, 10003, 1, 0],
-            [7, 5, 104, 5, 17, 10004, 1, 0]
-          ],
-          {
-            \"ends\": [7, 5],
-            \"soma\": [1],
-            \"mitochondrion\": [2, 4]
-          }
-        ]"
+    fn read_file(fname: &str) -> String {
+        let mut f = File::open(to_path(fname)).expect("file not found");
+
+        let mut contents = String::new();
+        f.read_to_string(&mut contents)
+            .expect("something went wrong reading the file");
+        contents.to_owned()
     }
 
-    fn get_skeleton_str() -> &'static str {
-        // todo: read from file instead
-        "[
-          [
-            [1, null, 1001, 1, 0, 0, -1, 5],
-            [2, 1, 1001, 2, 0, 0, -1, 5],
-            [3, 2, 1001, 3, 0, 0, -1, 5],
-            [4, 3, 1001, 4, 0, 0, -1, 5],
-            [5, 4, 1001, 5, 0, 0, -1, 5],
-            [6, 3, 1001, 6, 0, 0, -1, 5],
-            [7, 6, 1001, 7, 0, 0, -1, 5]
-          ],
-          [
-            [3, 101, 0, 3, 1, 0],
-            [5, 102, 0, 5, 1, 0],
-            [6, 103, 1, 6, 1, 0],
-            [7, 104, 1, 7, 1, 0]
-          ],
-          {
-            \"ends\": [7, 5],
-            \"soma\": [1],
-            \"mitochondrion\": [2, 4]
-          }
-        ]"
+    fn to_path(fname: &str) -> PathBuf {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("resources/test");
+        d.push(fname);
+        d
+    }
+
+    fn get_arbor_str() -> String {
+        read_file("small/compact-arbor.json")
+    }
+
+    fn get_skeleton_str() -> String {
+        read_file("small/compact-skeleton.json")
+
     }
 
     #[test]
     fn deser_skeleton_response() {
         let s = get_skeleton_str();
-        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let skel_response: SkeletonResponse = serde_json::from_str(&s).expect("It didn't work :(");
     }
 
     #[test]
     fn parser_from_skeleton_response() {
         let s = get_skeleton_str();
-        let skel_response: SkeletonResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = ArborParser::new(Response::Skeleton(skel_response));
+        let skel_response: SkeletonResponse = serde_json::from_str(&s).expect("It didn't work :(");
+        let ap = ArborParser::new(Response::Skeleton(skel_response)).expect("response was invalid");
+        assert_eq!(ap, small_arborparser())
     }
 
     #[test]
     fn deser_arbor_response() {
         let s = get_arbor_str();
-        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
+        let arbor_response: ArborResponse = serde_json::from_str(&s).expect("It didn't work :(");
     }
 
     #[test]
     fn parser_from_arbor_response() {
         let s = get_arbor_str();
-        let arbor_response: ArborResponse = serde_json::from_str(s).expect("It didn't work :(");
-        let ap = ArborParser::new(Response::Arbor(arbor_response));
+        let arbor_response: ArborResponse = serde_json::from_str(&s).expect("It didn't work :(");
+        let ap = ArborParser::new(Response::Arbor(arbor_response)).expect("response was invalid");
+        assert_eq!(ap, small_arborparser())
+    }
+
+    #[test]
+    fn parse_real_arbor() {
+        let s = read_file("3034133/compact-arbor.json");
+        let response: ArborResponse = serde_json::from_str(&s).expect("fail");
+        let ap = ArborParser::new(Response::Arbor(response)).expect("fail");
+    }
+
+    #[test]
+    fn parse_real_skeleton() {
+        let s = read_file("3034133/compact-skeleton.json");
+        let response: SkeletonResponse = serde_json::from_str(&s).expect("fail");
+        let ap = ArborParser::new(Response::Skeleton(response)).expect("fail");
+    }
+
+    #[test]
+    fn connector_relation_from_i64() {
+        let rel = ConnectorRelation::from_i64(0).expect("didn't work");
+        assert_eq!(rel, ConnectorRelation::Presynaptic);
     }
 }
