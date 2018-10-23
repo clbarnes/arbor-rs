@@ -37,18 +37,18 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     ) -> Result<Arbor<NodeType>, &'static str> {
         let mut a = Arbor { edges, root };
         if root.is_none() {
-            a.root = Some(a.find_root()?);
+            a.root = a.find_root()?;
         }
         a.check_valid()?;
         Ok(a)
     }
 
-    /// Checks whether arbor has any nodes
+    /// Return whether arbor has any nodes
     fn is_empty(&self) -> bool {
         self.edges.is_empty() && self.root.is_none()
     }
 
-    /// Adds a node without any edges (errors if arbor has nodes already)
+    /// Add a node without any edges (errors if arbor has nodes already)
     pub fn add_singleton_node(&mut self, root: NodeType) -> Result<(), &'static str> {
         if !self.is_empty() {
             return Err("Arbor already has nodes");
@@ -58,36 +58,51 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         Ok(())
     }
 
+    /// Return whether the given node has a proximal partner
     pub fn has_parent(&self, node: NodeType) -> bool {
         self.edges.contains_key(&node)
     }
 
+    /// Return the proximal partner of the given node
     pub fn get_parent(&self, node: NodeType) -> Option<&NodeType> {
         self.edges.get(&node)
     }
 
+    /// Return an iterator of nodes between the given node and the root
     pub fn path_to_root(&self, start: NodeType) -> Result<RootwardPath<NodeType>, &'static str> {
         RootwardPath::new(&self, start)
     }
 
-    fn check_valid_root(&self) -> Result<NodeType, &'static str> {
+    /// Error if the arbor's root is inconsistent with its edges
+    fn check_valid_root(&self) -> Result<Option<NodeType>, &'static str> {
         match self.root {
             Some(root) => {
-                if self.find_root()? == root {
-                    Ok(root)
+                if self.find_root()? == Some(root) {
+                    Ok(Some(root))
                 } else {
-                    Err("Arbor invalid: explicit root does not match implicit root")
+                    Err("Explicit and implicit roots differ")
                 }
             }
-            None => Err("Arbor invalid: no explicit root"),
+            None => {
+                if self.edges.is_empty() {
+                    Ok(None)
+                } else {
+                    Err("No explicit root")
+                }
+            }
         }
     }
 
+    /// Error if the arbor is inconsistent: e.g. root does not match edges, arbor has cycles,
+    /// arbor has more than one connected component
     pub fn check_valid(&self) -> Result<&Arbor<NodeType>, &'static str> {
         let root = self.check_valid_root()?;
+        if root.is_none() {
+            return Ok(self);
+        }
 
         let mut global_visited: FnvHashSet<NodeType> = FnvHashSet::default();
-        global_visited.insert(root);
+        global_visited.insert(root.expect("already checked for nones"));
         let mut intersects: bool;
 
         for start in self.edges.keys() {
@@ -113,52 +128,134 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         Ok(self)
     }
 
-    fn find_root(&self) -> Result<NodeType, &'static str> {
+    /// Return the root, based on the edges
+    fn find_root(&self) -> Result<Option<NodeType>, &'static str> {
+        if self.edges.is_empty() {
+            return Ok(self.root);
+        }
+
         let distals: FnvHashSet<NodeType> = self.edges.keys().cloned().collect();
         let proximals: FnvHashSet<NodeType> = self.edges.values().cloned().collect();
 
         let diff: Vec<NodeType> = proximals.difference(&distals).cloned().collect();
 
         match diff.len() {
-            1 => Ok(diff[0]),
-            0 => {
-                if distals.len() == 0 {
-                    self.root.ok_or("Arbor invalid: no edges or nodes")
-                } else {
-                    Err("Arbor invalid: no implicit root")
-                }
-            }
+            1 => Ok(Some(diff[0])),
+            0 => Err("Arbor invalid: no implicit root"),
             _ => Err("Arbor invalid: more than one implicit root"),
         }
     }
 
-    pub fn add_edges(&mut self, edges: Vec<NodeType>) -> &mut Arbor<NodeType> {
+    /// Add edges and set the root to match the new topology.
+    pub fn add_edges(&mut self, edges: &[NodeType]) -> Result<&mut Arbor<NodeType>, &'static str> {
+        let mut to_add: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
+        let mut has_intersected = self.is_empty();
+
         for chunk in edges.chunks(2) {
-            self.edges.insert(chunk[0], chunk[1]);
+            if to_add.insert(chunk[0], chunk[1]).is_some() || self.edges.contains_key(&chunk[0]) {
+                return Err("Node would have two parents");
+            }
+
+            // edge case: this is the reverse of an existing edge (bad)
+            let intersects = self.has_node(chunk[0]) || self.has_node(chunk[1]);
+
+            if has_intersected {
+                if intersects {
+                    return Err("New edges intersect with arbor more than once");
+                }
+            } else {
+                has_intersected = intersects;
+            }
         }
-        let new_root = self.find_root().unwrap();
-        self.root = Some(new_root);
-        self
+
+        if !has_intersected {
+            return Err("New edges do not intersect with existing arbor");
+        }
+
+        for (k, v) in to_add.drain() {
+            self.edges.insert(k, v);
+        }
+
+        // todo: check for validity before adding
+        // these panic intentionally to prevent leaving the arbor in a dirty state
+        self.root = self.find_root().unwrap();
+        self.check_valid().unwrap();
+        Ok(self)
     }
 
-    pub fn add_path(&mut self, path: Vec<NodeType>) -> &mut Arbor<NodeType> {
-        let possible_root = path.first().expect("Given empty path to add");
-        let should_replace = !self.has_node(*possible_root);
-        let mut intersects = self.edges.is_empty() || !should_replace;
+    /// Add path, setting the root to the first node in the new path unless that node is already in the arbor.
+    pub fn add_path(&mut self, path: &[NodeType]) -> Result<&mut Arbor<NodeType>, &'static str> {
+        // todo: un-spaghetti this
 
-        for proximal_distal in path.windows(2) {
-            intersects = intersects || self.edges.contains_key(&proximal_distal[1]);
-            self.edges.insert(proximal_distal[1], proximal_distal[0]);
+        // catch trivial cases
+        match path.len() {
+            0 => return Ok(self),
+            1 => {
+                let only = path.first().expect("definitely has first");
+                if self.has_node(*only) {
+                    return Ok(self);
+                } else if self.is_empty() {
+                    self.root = Some(*only);
+                    return Ok(self);
+                } else {
+                    return Err("Path does not intersect with arbor");
+                }
+            }
+            _ => (),
         }
 
-        if !intersects {
-            panic!("Path does not intersect with existing arbor")
+        // check path isn't bad
+        let uniques: FnvHashSet<NodeType> = path.iter().cloned().collect();
+        if uniques.len() != path.len() {
+            return Err("Path intersects with itself");
         }
 
-        if should_replace {
-            self.root = Some(possible_root.clone());
+        let possible_root = path.first().expect("Already checked for emptiness");
+
+        if self.is_empty() {
+            self.root = Some(*possible_root);
         }
-        self
+
+        let must_reroot = !self.has_node(*possible_root);
+        let mut has_intersected = !must_reroot;
+
+        let mut edges_to_add: Vec<(NodeType, NodeType)> = Vec::new();
+
+        for pair in path.windows(2) {
+            let proximal: NodeType;
+            let distal: NodeType;
+
+            if has_intersected {
+                // add pairs in proper order
+                proximal = pair[0];
+                distal = pair[1];
+
+                if self.has_node(distal) {
+                    return Err("Path intersects existing arbor more than once");
+                }
+            } else {
+                // add pairs in reverse order: the arbor will be rerooted at the end, reversing them
+                distal = pair[0];
+                proximal = pair[1];
+
+                has_intersected = self.has_node(proximal);
+            }
+            edges_to_add.push((distal, proximal));
+        }
+
+        if !has_intersected {
+            return Err("Path does not intersect with existing arbor");
+        }
+
+        for (dist, prox) in edges_to_add.iter() {
+            self.edges.insert(*dist, *prox);
+        }
+
+        if must_reroot {
+            self.reroot(*possible_root);
+        }
+
+        Ok(self)
     }
 
     pub fn reroot(&mut self, new_root: NodeType) -> &mut Arbor<NodeType> {
@@ -227,6 +324,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn all_successors(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
+        // todo: cache this
         let mut out: FnvHashMap<NodeType, Vec<NodeType>> =
             self.nodes().map(|n| (*n, Vec::new())).collect();
 
@@ -241,6 +339,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn out_degrees(&self) -> FnvHashMap<NodeType, usize> {
+        // todo: maybe cache this?
         let mut degree: FnvHashMap<NodeType, usize> = self.nodes().map(|n| (*n, 0)).collect();
         for proximal in self.edges.values() {
             degree.entry(*proximal).and_modify(|c| *c += 1);
@@ -249,6 +348,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
+        // todo: cache this
         let mut branches: FnvHashMap<NodeType, usize> = FnvHashMap::default();
         let mut ends: FnvHashSet<NodeType> = FnvHashSet::default();
 
@@ -376,14 +476,14 @@ mod tests {
     fn make_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
         let mut arbor = Arbor::default();
-        arbor.add_edges(edges);
+        arbor.add_edges(&edges);
         arbor
     }
 
     #[test]
     fn add_edges() {
         let mut arbor = Arbor::default();
-        arbor.add_edges(vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3]);
+        arbor.add_edges(&vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3]);
         assert_eq!(arbor.root.unwrap(), 1);
         assert_eq!(arbor.edges.len(), 6);
     }
@@ -391,11 +491,18 @@ mod tests {
     #[test]
     fn add_path() {
         let mut arbor = Arbor::default();
-        arbor.add_path(vec![1, 2, 3, 4, 5]);
+        arbor.add_path(&vec![1, 2, 3, 4, 5]).expect("fail");
         assert_eq!(arbor.root.unwrap(), 1);
-        arbor.add_path(vec![3, 6, 7]);
+        arbor.add_path(&vec![3, 6, 7]).expect("fail");
         assert_eq!(arbor.root.unwrap(), 1);
         assert_eq!(arbor.edges.len(), 6);
+    }
+
+    #[test]
+    fn add_path_reroot() {
+        let mut arbor = make_arbor();
+        arbor.add_path(&vec![8, 6, 9]).expect("fail");
+        arbor.check_valid().expect("New arbor is not valid");
     }
 
     #[test]
@@ -429,10 +536,10 @@ mod tests {
         let arbor = make_arbor();
         let branch_ends = arbor.find_branch_and_end_nodes();
 
-        let mut expected_branches: FnvHashMap<u64, usize> = vec![(3, 2)].into_iter().collect();
+        let expected_branches: FnvHashMap<u64, usize> = vec![(3, 2)].into_iter().collect();
         assert_eq!(branch_ends.branches, expected_branches);
 
-        let mut expected_ends: FnvHashSet<u64> = vec![5, 7].into_iter().collect();
+        let expected_ends: FnvHashSet<u64> = vec![5, 7].into_iter().collect();
         assert_eq!(branch_ends.ends, expected_ends);
 
         assert_eq!(branch_ends.n_branches, 1)
@@ -533,7 +640,7 @@ mod tests {
                 },
             ),
         ].into_iter()
-            .collect();
+        .collect();
 
         let orders = arbor.nodes_distance_to(3, locations);
         let expected: FnvHashMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
@@ -542,11 +649,6 @@ mod tests {
 
         let expected = NodesDistanceTo::from_distances(expected);
         assert_eq!(orders, expected);
-    }
-
-    #[test]
-    fn empty_test() {
-        let mut arbor = make_arbor();
     }
 
     #[test]

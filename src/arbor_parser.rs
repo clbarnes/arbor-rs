@@ -1,29 +1,29 @@
 use fnv::FnvHashMap;
 use num::traits::float::Float;
-use serde::Deserialize;
-use serde::Deserializer;
-use std::fmt::Debug;
-use std::hash::Hash;
-use utils::Location;
-use Arbor;
-use serde::de::Visitor;
-use std::fmt;
 use serde::de;
 use serde::de::SeqAccess;
+use serde::de::Visitor;
+use serde::Deserialize;
+use serde::Deserializer;
 use serde_json::Value;
-use std::result::Result::Ok;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::result::Result::Err;
-use num::Integer;
+use std::result::Result::Ok;
+use utils::Location;
+use Arbor;
 
 // todo: figure out strategy for access control
 
+// todo: use enum_primitive or similar properly
 #[derive(Debug, PartialEq, Clone)]
 pub enum ConnectorRelation {
     // 0 = presynaptic, 1 = postsynaptic, 2 = gap junction, -1 = other:
     Presynaptic = 0,  // 0
-    Postsynaptic = 1,  // 1
+    Postsynaptic = 1, // 1
     GapJunction = 2,  // 2
-    Other = -1,  // -1
+    Other = -1,       // -1
 }
 
 impl ConnectorRelation {
@@ -39,8 +39,10 @@ impl ConnectorRelation {
 
     fn from_json<E: de::Error>(value: Value) -> Result<ConnectorRelation, E> {
         match value {
-            Value::Number(n) => ConnectorRelation::from_i64(n.as_i64().unwrap_or(-2)).map_err(de::Error::custom),
-            _ => Err(de::Error::custom("Value is not a number"))
+            Value::Number(n) => {
+                ConnectorRelation::from_i64(n.as_i64().unwrap_or(-2)).map_err(de::Error::custom)
+            }
+            _ => Err(de::Error::custom("Value is not a number")),
         }
     }
 }
@@ -108,7 +110,7 @@ pub trait ArborParseable<C: DescribesConnector> {
                 }
                 None => {
                     root = match root {
-                        Some(node) => Err("More than one parentless node found in this arbor"),
+                        Some(_node) => Err("More than one parentless node found in this arbor"),
                         None => Ok(Some(treenode.id)),
                     }?;
                 }
@@ -137,8 +139,10 @@ pub struct Treenode {
 }
 
 impl<'de> Deserialize<'de> for Treenode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error> where
-        D: Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
         struct TreenodeVisitor;
 
         impl<'de> Visitor<'de> for TreenodeVisitor {
@@ -148,22 +152,33 @@ impl<'de> Deserialize<'de> for Treenode {
                 formatter.write_str("struct Treenode")
             }
 
-            fn visit_seq<V>(self, mut seq: V) -> Result<Treenode, V::Error> where V: SeqAccess<'de> {
-                let id = seq.next_element()?
+            fn visit_seq<V>(self, mut seq: V) -> Result<Treenode, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let parent_id = seq.next_element()?
+                let parent_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let user_id = seq.next_element()?
+                let user_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                let x = seq.next_element()?
+                let x = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(3, &self))?;
-                let y = seq.next_element()?
+                let y = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(4, &self))?;
-                let z = seq.next_element()?
+                let z = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(5, &self))?;
-                let radius = seq.next_element()?
+                let radius = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(6, &self))?;
-                let confidence = seq.next_element()?
+                let confidence = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(7, &self))?;
 
                 Ok(Treenode {
@@ -171,10 +186,10 @@ impl<'de> Deserialize<'de> for Treenode {
                     parent_id: match parent_id {
                         Value::Null => None,
                         Value::Number(n) => n.as_u64(),
-                        _ => panic!("not a number"),  // todo: use de::Error::invalid_type
+                        _ => panic!("not a number"), // todo: use de::Error::invalid_type
                     },
                     user_id,
-                    location: Location {x,y,z},
+                    location: Location { x, y, z },
                     radius,
                     confidence,
                 })
@@ -205,8 +220,10 @@ pub struct SkeletonConnector {
 }
 
 impl<'de> Deserialize<'de> for SkeletonConnector {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error> where
-        D: Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
         struct SkeletonConnectorVisitor;
 
         impl<'de> Visitor<'de> for SkeletonConnectorVisitor {
@@ -216,18 +233,27 @@ impl<'de> Deserialize<'de> for SkeletonConnector {
                 formatter.write_str("struct Treenode")
             }
 
-            fn visit_seq<V>(self, mut seq: V) -> Result<SkeletonConnector, V::Error> where V: SeqAccess<'de> {
-                let treenode_id = seq.next_element()?
+            fn visit_seq<V>(self, mut seq: V) -> Result<SkeletonConnector, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let treenode_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let connector_id = seq.next_element()?
+                let connector_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let relation_id = seq.next_element()?
+                let relation_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                let x = seq.next_element()?
+                let x = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let y = seq.next_element()?
+                let y = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let z = seq.next_element()?
+                let z = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
 
                 Ok(SkeletonConnector {
@@ -236,7 +262,7 @@ impl<'de> Deserialize<'de> for SkeletonConnector {
                         connector_id,
                         relation: ConnectorRelation::from_json(relation_id)?,
                     },
-                    location: Location {x,y,z},
+                    location: Location { x, y, z },
                 })
             }
         }
@@ -265,8 +291,8 @@ pub struct SkeletonResponse {
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
     tags: FnvHashMap<String, Vec<u64>>,
-    reviews: Vec<Vec<Value>>,  // placeholders, ignored
-    annotations: Vec<Vec<Value>>,  // placeholders, ignored
+    reviews: Vec<Vec<Value>>,     // placeholders, ignored
+    annotations: Vec<Vec<Value>>, // placeholders, ignored
 }
 
 impl ArborParseable<SkeletonConnector> for SkeletonResponse {
@@ -302,8 +328,10 @@ pub struct ArborConnector {
 }
 
 impl<'de> Deserialize<'de> for ArborConnector {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error> where
-        D: Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
         struct ArborConnectorVisitor;
 
         impl<'de> Visitor<'de> for ArborConnectorVisitor {
@@ -313,22 +341,33 @@ impl<'de> Deserialize<'de> for ArborConnector {
                 formatter.write_str("struct Treenode")
             }
 
-            fn visit_seq<V>(self, mut seq: V) -> Result<ArborConnector, V::Error> where V: SeqAccess<'de> {
-                let this_treenode_id = seq.next_element()?
+            fn visit_seq<V>(self, mut seq: V) -> Result<ArborConnector, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let this_treenode_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let this_confidence = seq.next_element()?
+                let this_confidence = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let connector_id = seq.next_element()?
+                let connector_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                let other_confidence = seq.next_element()?
+                let other_confidence = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(3, &self))?;
-                let other_treenode_id = seq.next_element()?
+                let other_treenode_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(4, &self))?;
-                let other_skeleton_id = seq.next_element()?
+                let other_skeleton_id = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(5, &self))?;
-                let this_relation = seq.next_element()?
+                let this_relation = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(6, &self))?;
-                let other_relation = seq.next_element()?
+                let other_relation = seq
+                    .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(7, &self))?;
 
                 Ok(ArborConnector {
@@ -453,7 +492,6 @@ impl ArborParser<u64, f64> {
 //    }
 //}
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,7 +514,7 @@ mod tests {
     fn small_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
         let mut arbor = Arbor::default();
-        arbor.add_edges(edges);
+        arbor.add_edges(&edges);
         arbor
     }
 
@@ -525,7 +563,6 @@ mod tests {
 
     fn get_skeleton_str() -> String {
         read_file("small/compact-skeleton.json")
-
     }
 
     #[test]

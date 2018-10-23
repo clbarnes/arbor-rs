@@ -8,9 +8,9 @@ use std::vec::Vec;
 use bencher::Bencher;
 
 use arbor::*;
-use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 fn read_file(fname: &str) -> String {
     let mut f = File::open(to_path(fname)).expect("file not found");
@@ -26,24 +26,6 @@ fn to_path(fname: &str) -> PathBuf {
     d.push("resources/test");
     d.push(fname);
     d
-}
-
-fn make_arbor() -> Arbor<u64> {
-    let mut arbor = Arbor::default();
-
-    let mut max_id: u64 = 1000;
-    let branch_len = 1000;
-    arbor.add_path((0..max_id).collect());
-
-    for branch in (100..1000).step_by(100) {
-        let next_max_id = max_id + branch_len;
-        let mut path = vec![branch];
-        path.extend(max_id..next_max_id);
-        arbor.add_path(path);
-        max_id = next_max_id;
-    }
-
-    arbor
 }
 
 fn read_arbor() -> Arbor<u64> {

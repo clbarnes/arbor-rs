@@ -3,10 +3,7 @@ use num::traits::float::Float;
 use num::traits::real::Real;
 use num::Integer;
 use num::Zero;
-use serde::Deserialize;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
-use std::collections::hash_map::Keys;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
@@ -81,12 +78,8 @@ impl<'a, NodeType: Copy + Debug + Hash + Eq + Ord> Iterator for RootwardPath<'a,
     type Item = NodeType;
 
     fn next(&mut self) -> Option<NodeType> {
-        // todo: should this check for cycles?
         match self.next {
-            Some(node) => mem::replace(
-                &mut self.next,
-                self.arbor.get_parent(node).map(|n| n.clone()),
-            ),
+            Some(node) => mem::replace(&mut self.next, self.arbor.get_parent(node).cloned()),
             None => None,
         }
     }
