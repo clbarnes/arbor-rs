@@ -1,5 +1,6 @@
 use utils::{
     cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
+    DepthFirstSearch, FastMap, FastSet, Toposort
 };
 
 use fnv::{FnvHashMap, FnvHashSet};
@@ -10,12 +11,10 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::Chain;
 use std::option::Iter;
-use utils::DepthFirstSearch;
-use utils::Toposort;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Arbor<NodeType: Hash + Clone + Eq> {
-    pub(crate) edges: FnvHashMap<NodeType, NodeType>,
+    pub(crate) edges: FastMap<NodeType, NodeType>,
     pub root: Option<NodeType>,
 }
 
@@ -23,7 +22,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Default for Arbor<NodeType> {
     /// Create an empty arbor
     fn default() -> Self {
         Arbor {
-            edges: FnvHashMap::default(),
+            edges: FastMap::default(),
             root: None,
         }
     }
@@ -32,7 +31,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Default for Arbor<NodeType> {
 impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Creates a populated arbor and checks that it is valid
     pub fn new(
-        edges: FnvHashMap<NodeType, NodeType>,
+        edges: FastMap<NodeType, NodeType>,
         root: Option<NodeType>,
     ) -> Result<Arbor<NodeType>, &'static str> {
         let mut a = Arbor { edges, root };
@@ -101,12 +100,12 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             return Ok(self);
         }
 
-        let mut global_visited: FnvHashSet<NodeType> = FnvHashSet::default();
+        let mut global_visited: FastSet<NodeType> = FastSet::default();
         global_visited.insert(root.expect("already checked for nones"));
         let mut intersects: bool;
 
         for start in self.edges.keys() {
-            let mut local_visited: FnvHashSet<NodeType> = FnvHashSet::default();
+            let mut local_visited: FastSet<NodeType> = FastSet::default();
             intersects = false;
 
             for node in self.path_to_root(*start)? {
@@ -134,8 +133,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             return Ok(self.root);
         }
 
-        let distals: FnvHashSet<NodeType> = self.edges.keys().cloned().collect();
-        let proximals: FnvHashSet<NodeType> = self.edges.values().cloned().collect();
+        let distals: FastSet<NodeType> = self.edges.keys().cloned().collect();
+        let proximals: FastSet<NodeType> = self.edges.values().cloned().collect();
 
         let diff: Vec<NodeType> = proximals.difference(&distals).cloned().collect();
 
@@ -148,7 +147,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Add edges and set the root to match the new topology.
     pub fn add_edges(&mut self, edges: &[NodeType]) -> Result<&mut Arbor<NodeType>, &'static str> {
-        let mut to_add: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
+        let mut to_add: FastMap<NodeType, NodeType> = FastMap::default();
         let mut has_intersected = self.is_empty();
 
         for chunk in edges.chunks(2) {
@@ -205,7 +204,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         }
 
         // check path isn't bad
-        let uniques: FnvHashSet<NodeType> = path.iter().cloned().collect();
+        let uniques: FastSet<NodeType> = path.iter().cloned().collect();
         if uniques.len() != path.len() {
             return Err("Path intersects with itself");
         }
@@ -279,7 +278,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn nodes_distance_to_root<F: Float>(
         &self,
-        positions: FnvHashMap<NodeType, Location<F>>,
+        positions: FastMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
         self.nodes_distance_to(self.root.expect("Arbor has no root"), positions)
     }
@@ -287,7 +286,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     pub fn nodes_distance_to<F: Float>(
         &self,
         target: NodeType,
-        positions: FnvHashMap<NodeType, Location<F>>,
+        positions: FastMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
         let msg = "positions did not contain all required nodes";
         let distance_fn = |n1: NodeType, n2: NodeType| {
@@ -307,8 +306,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         &self,
         target: NodeType,
         distance_fn: F,
-    ) -> FnvHashMap<NodeType, T> {
-        let mut dists: FnvHashMap<NodeType, T> = FnvHashMap::default();
+    ) -> FastMap<NodeType, T> {
+        let mut dists: FastMap<NodeType, T> = FastMap::default();
 
         for (distal, proximal) in self.dfs(target) {
             match proximal {
@@ -323,9 +322,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         dists
     }
 
-    pub fn all_successors(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
+    pub fn all_successors(&self) -> FastMap<NodeType, Vec<NodeType>> {
         // todo: cache this
-        let mut out: FnvHashMap<NodeType, Vec<NodeType>> =
+        let mut out: FastMap<NodeType, Vec<NodeType>> =
             self.nodes().map(|n| (*n, Vec::new())).collect();
 
         for (succ, pred) in self.edges.iter() {
@@ -334,13 +333,13 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         out
     }
 
-    pub fn children(&self) -> FnvHashSet<NodeType> {
+    pub fn children(&self) -> FastSet<NodeType> {
         self.edges.keys().cloned().collect()
     }
 
-    pub fn out_degrees(&self) -> FnvHashMap<NodeType, usize> {
+    pub fn out_degrees(&self) -> FastMap<NodeType, usize> {
         // todo: maybe cache this?
-        let mut degree: FnvHashMap<NodeType, usize> = self.nodes().map(|n| (*n, 0)).collect();
+        let mut degree: FastMap<NodeType, usize> = self.nodes().map(|n| (*n, 0)).collect();
         for proximal in self.edges.values() {
             degree.entry(*proximal).and_modify(|c| *c += 1);
         }
@@ -349,8 +348,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
         // todo: cache this
-        let mut branches: FnvHashMap<NodeType, usize> = FnvHashMap::default();
-        let mut ends: FnvHashSet<NodeType> = FnvHashSet::default();
+        let mut branches: FastMap<NodeType, usize> = FastMap::default();
+        let mut ends: FastSet<NodeType> = FastSet::default();
 
         for (node, degree) in self.out_degrees().iter() {
             match degree {
@@ -377,8 +376,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         partitions
     }
 
-    pub fn all_neighbours(&self) -> FnvHashMap<NodeType, Vec<NodeType>> {
-        let mut out: FnvHashMap<NodeType, Vec<NodeType>> = FnvHashMap::default();
+    pub fn all_neighbours(&self) -> FastMap<NodeType, Vec<NodeType>> {
+        let mut out: FastMap<NodeType, Vec<NodeType>> = FastMap::default();
         for (succ, pred) in self.edges.iter() {
             out.entry(pred.clone())
                 .or_insert(Vec::new())
@@ -393,9 +392,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn flow_centrality(
         &self,
-        targets: FnvHashMap<NodeType, usize>,
-        sources: FnvHashMap<NodeType, usize>,
-    ) -> Option<FnvHashMap<NodeType, FlowCentrality>> {
+        targets: FastMap<NodeType, usize>,
+        sources: FastMap<NodeType, usize>,
+    ) -> Option<FastMap<NodeType, FlowCentrality>> {
         unimplemented!()
     }
 
@@ -426,7 +425,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     /// Return a new arbor rooted at the given node and containing all nodes distal to it.
     pub fn sub_arbor(&self, new_root: NodeType) -> Arbor<NodeType> {
-        let mut edges: FnvHashMap<NodeType, NodeType> = FnvHashMap::default();
+        let mut edges: FastMap<NodeType, NodeType> = FastMap::default();
         for (distal, proximal) in self.dfs(new_root) {
             if let Some(p) = proximal {
                 edges.insert(distal, p);
@@ -536,10 +535,10 @@ mod tests {
         let arbor = make_arbor();
         let branch_ends = arbor.find_branch_and_end_nodes();
 
-        let expected_branches: FnvHashMap<u64, usize> = vec![(3, 2)].into_iter().collect();
+        let expected_branches: FastMap<u64, usize> = vec![(3, 2)].into_iter().collect();
         assert_eq!(branch_ends.branches, expected_branches);
 
-        let expected_ends: FnvHashSet<u64> = vec![5, 7].into_iter().collect();
+        let expected_ends: FastSet<u64> = vec![5, 7].into_iter().collect();
         assert_eq!(branch_ends.ends, expected_ends);
 
         assert_eq!(branch_ends.n_branches, 1)
@@ -570,7 +569,7 @@ mod tests {
         let arbor = make_arbor();
 
         let orders = arbor.nodes_order_from(3);
-        let expected: FnvHashMap<u64, usize> = vec![(3, 0), (4, 1), (5, 2), (6, 1), (7, 2)]
+        let expected: FastMap<u64, usize> = vec![(3, 0), (4, 1), (5, 2), (6, 1), (7, 2)]
             .into_iter()
             .collect();
 
@@ -582,7 +581,7 @@ mod tests {
     fn nodes_distance_to() {
         let arbor = make_arbor();
 
-        let locations: FnvHashMap<u64, Location<f64>> = vec![
+        let locations: FastMap<u64, Location<f64>> = vec![
             (
                 1,
                 Location {
@@ -643,7 +642,7 @@ mod tests {
         .collect();
 
         let orders = arbor.nodes_distance_to(3, locations);
-        let expected: FnvHashMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
+        let expected: FastMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
             .into_iter()
             .collect();
 

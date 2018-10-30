@@ -10,6 +10,19 @@ use std::mem;
 use std::ops::Sub;
 use Arbor;
 
+// todo: trait alias https://github.com/rust-lang/rfcs/pull/1733
+//#[derive(Hash, Debug, Eq, Copy, Ord)]
+//struct NodeType<T: Hash + Debug + Eq + Copy + Ord> {
+//    id: T
+//}
+
+// Type aliases allow easier switching between hash implementations
+/// Cryptographically insecure mapping, generally for <NodeType, SomethingElse>
+pub type FastMap<T, U> = FnvHashMap<T, U>;
+
+/// Cryptographically insecure mapping, generally for <NodeType, SomethingElse>
+pub type FastSet<T> = FnvHashSet<T>;
+
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();
     let b_len = b.len();
@@ -134,7 +147,7 @@ impl<'a, NodeType: Copy + Debug + Hash + Eq + Ord> Iterator for RootwardPath<'a,
 
 pub struct Partitions<'a, NodeType: 'a + Hash + Clone + Eq> {
     arbor: &'a Arbor<NodeType>,
-    branches: FnvHashMap<NodeType, bool>,
+    branches: FastMap<NodeType, bool>,
     ends: Vec<NodeType>,
 }
 
@@ -182,12 +195,12 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
 
 #[derive(Debug, PartialEq)]
 pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
-    distances: FnvHashMap<NodeType, D>,
+    distances: FastMap<NodeType, D>,
     max: D,
 }
 
 impl<NodeType: Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {
-    pub fn from_orders(orders: FnvHashMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
+    pub fn from_orders(orders: FastMap<NodeType, I>) -> NodesDistanceTo<NodeType, I> {
         let max = orders.values().max().unwrap().to_owned();
         NodesDistanceTo {
             distances: orders,
@@ -197,7 +210,7 @@ impl<NodeType: Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, 
 }
 
 impl<NodeType: Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> {
-    pub fn from_distances(distances: FnvHashMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
+    pub fn from_distances(distances: FastMap<NodeType, F>) -> NodesDistanceTo<NodeType, F> {
         let mut max: F = Zero::zero();
 
         for d in distances.values() {
@@ -215,15 +228,15 @@ impl<NodeType: Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> 
 }
 
 pub struct BranchAndEndNodes<NodeType> {
-    pub branches: FnvHashMap<NodeType, usize>,
-    pub ends: FnvHashSet<NodeType>,
+    pub branches: FastMap<NodeType, usize>,
+    pub ends: FastSet<NodeType>,
     pub n_branches: usize,
 }
 
 impl<NodeType: Hash + Eq> BranchAndEndNodes<NodeType> {
     pub fn new(
-        branches: FnvHashMap<NodeType, usize>,
-        ends: FnvHashSet<NodeType>,
+        branches: FastMap<NodeType, usize>,
+        ends: FastSet<NodeType>,
     ) -> BranchAndEndNodes<NodeType> {
         let n_branches = branches.len();
         BranchAndEndNodes {
@@ -282,7 +295,7 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Toposort<'a, Nod
 }
 
 pub struct DepthFirstSearch<NodeType: Hash + Clone + Eq> {
-    successors: FnvHashMap<NodeType, Vec<NodeType>>,
+    successors: FastMap<NodeType, Vec<NodeType>>,
     to_yield: Vec<(NodeType, Option<NodeType>)>,
 }
 

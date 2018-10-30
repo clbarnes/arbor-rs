@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::result::Result::Err;
 use std::result::Result::Ok;
-use utils::Location;
+use utils::{Location, FastMap, FastSet};
 use Arbor;
 
 // todo: figure out strategy for access control
@@ -49,12 +49,12 @@ impl ConnectorRelation {
 
 pub struct ArborLocations<NodeType: Hash + Clone + Eq, F: Float> {
     arbor: Arbor<NodeType>,
-    locations: FnvHashMap<NodeType, Location<F>>,
+    locations: FastMap<NodeType, Location<F>>,
 }
 
 pub struct InputsOutputs<NodeType> {
-    inputs: FnvHashMap<NodeType, usize>,
-    outputs: FnvHashMap<NodeType, usize>,
+    inputs: FastMap<NodeType, usize>,
+    outputs: FastMap<NodeType, usize>,
 }
 
 pub trait ArborParseable<C: DescribesConnector> {
@@ -75,8 +75,8 @@ pub trait ArborParseable<C: DescribesConnector> {
     }
 
     fn connectors_to_inputs_outputs(&self) -> InputsOutputs<u64> {
-        let mut inputs: FnvHashMap<u64, usize> = FnvHashMap::default();
-        let mut outputs: FnvHashMap<u64, usize> = FnvHashMap::default();
+        let mut inputs: FastMap<u64, usize> = FastMap::default();
+        let mut outputs: FastMap<u64, usize> = FastMap::default();
 
         for connector_info in self.connectors().iter() {
             let connector = connector_info.this();
@@ -99,8 +99,8 @@ pub trait ArborParseable<C: DescribesConnector> {
 
     /// N.B. does not check validity of input
     fn treenodes_to_arbor_locations(&self) -> Result<ArborLocations<u64, f64>, &'static str> {
-        let mut locations: FnvHashMap<u64, Location<f64>> = FnvHashMap::default();
-        let mut edges: FnvHashMap<u64, u64> = FnvHashMap::default();
+        let mut locations: FastMap<u64, Location<f64>> = FastMap::default();
+        let mut edges: FastMap<u64, u64> = FastMap::default();
         let mut root = None;
 
         for treenode in self.treenodes().iter() {
@@ -290,7 +290,7 @@ pub struct SkeletonResponse {
     //    [treenode_id, connector_id, 0|1|2|-1, location_x, location_y, location_z]
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
-    tags: FnvHashMap<String, Vec<u64>>,
+    tags: FastMap<String, Vec<u64>>,
     reviews: Vec<Vec<Value>>,     // placeholders, ignored
     annotations: Vec<Vec<Value>>, // placeholders, ignored
 }
@@ -426,7 +426,7 @@ pub struct ArborResponse {
     //     relation_id, relation_id]
     treenodes: Vec<Treenode>,
     connectors: Vec<ArborConnector>,
-    tags: FnvHashMap<String, Vec<u64>>,
+    tags: FastMap<String, Vec<u64>>,
 }
 
 enum Response {
@@ -438,25 +438,25 @@ enum Response {
 #[derive(PartialEq, Debug)]
 pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     pub arbor: Arbor<NodeType>,
-    pub inputs: FnvHashMap<NodeType, usize>,
-    pub outputs: FnvHashMap<NodeType, usize>,
-    pub locations: FnvHashMap<NodeType, Location<F>>,
+    pub inputs: FastMap<NodeType, usize>,
+    pub outputs: FastMap<NodeType, usize>,
+    pub locations: FastMap<NodeType, Location<F>>,
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> Default for ArborParser<NodeType, F> {
     fn default() -> ArborParser<NodeType, F> {
         ArborParser {
             arbor: Arbor::default(),
-            inputs: FnvHashMap::default(),
-            outputs: FnvHashMap::default(),
-            locations: FnvHashMap::default(),
+            inputs: FastMap::default(),
+            outputs: FastMap::default(),
+            locations: FastMap::default(),
         }
     }
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
-    fn create_synapse_map(&self) -> FnvHashMap<NodeType, usize> {
-        let mut out: FnvHashMap<NodeType, usize> = FnvHashMap::default();
+    fn create_synapse_map(&self) -> FastMap<NodeType, usize> {
+        let mut out: FastMap<NodeType, usize> = FastMap::default();
 
         for (key, value) in self.inputs.iter().chain(self.outputs.iter()) {
             let mut entry = out.entry(*key).or_insert(0);
@@ -467,7 +467,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 
     fn collapse_artifactual_branches(
         &mut self,
-        tags: FnvHashMap<String, Vec<NodeType>>,
+        tags: FastMap<String, Vec<NodeType>>,
     ) -> ArborParser<NodeType, F> {
         unimplemented!();
     }
@@ -519,7 +519,7 @@ mod tests {
     }
 
     fn small_arborparser() -> ArborParser<u64, f64> {
-        let mut locations: FnvHashMap<u64, Location<f64>> = FnvHashMap::default();
+        let mut locations: FastMap<u64, Location<f64>> = FastMap::default();
         for idx in 1..8 {
             locations.insert(
                 idx as u64,
@@ -530,8 +530,8 @@ mod tests {
                 },
             );
         }
-        let inputs: FnvHashMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
-        let outputs: FnvHashMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
+        let inputs: FastMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
+        let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
 
         ArborParser {
             arbor: small_arbor(),
