@@ -3,7 +3,6 @@ use utils::{
     DepthFirstSearch, FastMap, FastSet, Toposort
 };
 
-use fnv::{FnvHashMap, FnvHashSet};
 use num::traits::float::Float;
 use num::Zero;
 use std::collections::hash_map::Keys;

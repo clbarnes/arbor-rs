@@ -1,4 +1,3 @@
-use fnv::FnvHashMap;
 use num::traits::float::Float;
 use serde::de;
 use serde::de::SeqAccess;
