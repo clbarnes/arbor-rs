@@ -3,7 +3,7 @@ extern crate serde_derive;
 
 #[cfg(test)]
 extern crate bencher;
-extern crate fnv;
+extern crate hashbrown;
 extern crate serde;
 extern crate serde_json;
 

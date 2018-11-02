@@ -1,4 +1,4 @@
-use fnv::{FnvHashMap, FnvHashSet};
+use hashbrown::{HashMap, HashSet};
 use num::traits::float::Float;
 use num::traits::real::Real;
 use num::Integer;
@@ -18,10 +18,10 @@ use Arbor;
 
 // Type aliases allow easier switching between hash implementations
 /// Cryptographically insecure mapping, generally for <NodeType, SomethingElse>
-pub type FastMap<T, U> = FnvHashMap<T, U>;
+pub type FastMap<T, U> = HashMap<T, U>;
 
 /// Cryptographically insecure mapping, generally for <NodeType, SomethingElse>
-pub type FastSet<T> = FnvHashSet<T>;
+pub type FastSet<T> = HashSet<T>;
 
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();
