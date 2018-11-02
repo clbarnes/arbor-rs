@@ -5,12 +5,13 @@ use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::result::Result::Err;
 use std::result::Result::Ok;
-use utils::{Location, FastMap, FastSet};
+use utils::{FastMap, FastSet, Location};
 use Arbor;
 
 // todo: figure out strategy for access control
@@ -289,7 +290,7 @@ pub struct SkeletonResponse {
     //    [treenode_id, connector_id, 0|1|2|-1, location_x, location_y, location_z]
     treenodes: Vec<Treenode>,
     connectors: Vec<SkeletonConnector>,
-    tags: FastMap<String, Vec<u64>>,
+    tags: HashMap<String, Vec<u64>>,
     reviews: Vec<Vec<Value>>,     // placeholders, ignored
     annotations: Vec<Vec<Value>>, // placeholders, ignored
 }
@@ -425,7 +426,7 @@ pub struct ArborResponse {
     //     relation_id, relation_id]
     treenodes: Vec<Treenode>,
     connectors: Vec<ArborConnector>,
-    tags: FastMap<String, Vec<u64>>,
+    tags: HashMap<String, Vec<u64>>,
 }
 
 enum Response {
@@ -466,7 +467,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 
     fn collapse_artifactual_branches(
         &mut self,
-        tags: FastMap<String, Vec<NodeType>>,
+        tags: HashMap<String, Vec<NodeType>>,
     ) -> ArborParser<NodeType, F> {
         unimplemented!();
     }

@@ -1,6 +1,6 @@
 use utils::{
-    cmp_len, BranchAndEndNodes, FlowCentrality, Location, NodesDistanceTo, Partitions, RootwardPath,
-    DepthFirstSearch, FastMap, FastSet, Toposort
+    cmp_len, BranchAndEndNodes, DepthFirstSearch, FastKeys, FastMap, FastSet, FlowCentrality,
+    Location, NodesDistanceTo, Partitions, RootwardPath, Toposort,
 };
 
 use num::traits::float::Float;
@@ -332,8 +332,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         out
     }
 
-    pub fn children(&self) -> FastSet<NodeType> {
-        self.edges.keys().cloned().collect()
+    pub fn children(&self) -> FastKeys<NodeType, NodeType> {
+        self.edges.keys()
     }
 
     pub fn out_degrees(&self) -> FastMap<NodeType, usize> {
@@ -405,7 +405,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     /// Iterate over nodes
-    pub fn nodes(&self) -> Chain<Keys<NodeType, NodeType>, Iter<NodeType>> {
+    pub fn nodes(&self) -> Chain<FastKeys<NodeType, NodeType>, Iter<NodeType>> {
         self.edges.keys().chain(self.root.iter())
     }
 
@@ -637,7 +637,8 @@ mod tests {
                     z: 0.0,
                 },
             ),
-        ].into_iter()
+        ]
+        .into_iter()
         .collect();
 
         let orders = arbor.nodes_distance_to(3, locations);
