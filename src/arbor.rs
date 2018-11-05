@@ -1,7 +1,9 @@
 use utils::{
-    cmp_len, BranchAndEndNodes, DepthFirstSearch, FastKeys, FastMap, FastSet, FlowCentrality,
-    Location, NodesDistanceTo, Partitions, RootwardPath, Toposort,
+    cmp_len, FastKeys, FastMap, FastSet, FlowCentrality,
+    Location, NodesDistanceTo
 };
+use arbor_features::{BranchAndEndNodes, RootwardPath, Partitions};
+use algorithms::{Toposort, DepthFirstSearch};
 
 use num::traits::float::Float;
 use num::Zero;
@@ -176,8 +178,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
         // todo: check for validity before adding
         // these panic intentionally to prevent leaving the arbor in a dirty state
-        self.root = self.find_root().unwrap();
-        self.check_valid().unwrap();
+        self.root = self.find_root().expect("Added edges make arbor invalid");
+        self.check_valid().expect("Added edges make arbor invalid");
         Ok(self)
     }
 
@@ -347,22 +349,22 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
         // todo: cache this
-        let mut branches: FastMap<NodeType, usize> = FastMap::default();
-        let mut ends: FastSet<NodeType> = FastSet::default();
+//        let mut branches: FastMap<NodeType, usize> = FastMap::default();
+//        let mut ends: FastSet<NodeType> = FastSet::default();
+//
+//        for (node, degree) in self.out_degrees().iter() {
+//            match degree {
+//                0 => {
+//                    ends.insert(node.clone());
+//                }
+//                1 => (),
+//                _ => {
+//                    branches.insert(node.clone(), degree.clone());
+//                }
+//            };
+//        }
 
-        for (node, degree) in self.out_degrees().iter() {
-            match degree {
-                0 => {
-                    ends.insert(node.clone());
-                }
-                1 => (),
-                _ => {
-                    branches.insert(node.clone(), degree.clone());
-                }
-            };
-        }
-
-        BranchAndEndNodes::new(branches, ends)
+        BranchAndEndNodes::new(self)
     }
 
     pub fn partition(&self) -> Partitions<NodeType> {

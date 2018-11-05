@@ -22,3 +22,5 @@ mod synapse_clustering;
 pub use synapse_clustering::SynapseClustering;
 
 mod utils;
+mod arbor_features;
+mod algorithms;
