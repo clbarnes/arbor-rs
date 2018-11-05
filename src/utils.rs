@@ -61,8 +61,8 @@ impl<F: Float> Sub<Location<F>> for Location<F> {
 }
 
 impl<F: Float> Location<F> {
-    pub fn distance_to(self, other: Location<F>) -> F {
-        (self - other).norm()
+    pub fn distance_to(self, other: &Location<F>) -> F {
+        (self - other.clone()).norm()
     }
 }
 

@@ -487,8 +487,8 @@ impl ArborParser<u64, f64> {
 
 // todo: something like this should be possible
 //impl<C: DescribesConnector, P: ArborParseable<C>> ArborParser<u64, f64> {
-//    fn new(response: P) -> Result<ArborParser<u64, f64>, &'static str> {
-//        P.to_arborparser()
+//    fn new(response: P) -> Result<Self, &'static str> {
+//        response.to_arborparser()
 //    }
 //}
 

@@ -291,7 +291,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
                 .get(&n1)
                 .expect(msg)
                 .clone()
-                .distance_to(positions.get(&n2).expect(msg).clone())
+                .distance_to(positions.get(&n2).expect(msg))
         };
 
         let dists = self.nodes_edge_metric(target, distance_fn);
@@ -499,6 +499,18 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     pub fn dfs_from_root(&self) -> DepthFirstSearch<NodeType> {
         DepthFirstSearch::from_root(self).expect("Bad root") // todo: handle errors
     }
+
+    pub fn cable_length<F: Float>(&self, positions: FastMap<NodeType, Location<F>>) -> F {
+        self.edges.iter().fold(Zero::zero(), |accum, (n1, n2)| {
+            let loc1 = positions
+                .get(n1)
+                .expect("positions does not contain all nodes");
+            let loc2 = positions
+                .get(n2)
+                .expect("positions does not contain all nodes");
+            accum + loc1.clone().distance_to(loc2)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -520,6 +532,68 @@ mod tests {
         let mut arbor = Arbor::default();
         arbor.add_edges(&edges);
         arbor
+    }
+
+    fn make_locations() -> FastMap<u64, Location<f64>> {
+        vec![
+            (
+                1,
+                Location {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                2,
+                Location {
+                    x: 2.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                3,
+                Location {
+                    x: 3.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                4,
+                Location {
+                    x: 4.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                5,
+                Location {
+                    x: 5.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                6,
+                Location {
+                    x: 6.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+            (
+                7,
+                Location {
+                    x: 7.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ),
+        ].into_iter()
+        .collect()
     }
 
     #[test]
@@ -623,66 +697,7 @@ mod tests {
     #[test]
     fn nodes_distance_to() {
         let arbor = make_arbor();
-
-        let locations: FastMap<u64, Location<f64>> = vec![
-            (
-                1,
-                Location {
-                    x: 1.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                2,
-                Location {
-                    x: 2.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                3,
-                Location {
-                    x: 3.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                4,
-                Location {
-                    x: 4.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                5,
-                Location {
-                    x: 5.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                6,
-                Location {
-                    x: 6.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-            (
-                7,
-                Location {
-                    x: 7.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            ),
-        ].into_iter()
-        .collect();
+        let locations = make_locations();
 
         let orders = arbor.nodes_distance_to(3, locations);
         let expected: FastMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
@@ -717,6 +732,16 @@ mod tests {
         let inputs: FastMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
         let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
 
-        let fcs = arbor.flow_centrality(outputs, inputs).expect("should get an answer");
+        let fcs = arbor
+            .flow_centrality(outputs, inputs)
+            .expect("should get an answer");
+    }
+
+    #[test]
+    fn cable_length() {
+        let arbor = make_arbor();
+        let locations = make_locations();
+
+        assert_eq!(arbor.cable_length(locations), 8.0);
     }
 }
