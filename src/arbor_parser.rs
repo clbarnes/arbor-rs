@@ -16,6 +16,7 @@ use Arbor;
 
 // todo: figure out strategy for access control
 
+// todo: can't actually rely on these numbers
 // todo: use enum_primitive or similar properly
 #[derive(Debug, PartialEq, Clone)]
 pub enum ConnectorRelation {
