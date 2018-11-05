@@ -498,7 +498,6 @@ mod tests {
     use serde_json;
     use std::fs::File;
     use std::io::Read;
-    use std::path::Path;
     use std::path::PathBuf;
 
     //            1

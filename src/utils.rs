@@ -3,6 +3,7 @@ use hashbrown::{HashMap, HashSet};
 use num::traits::float::Float;
 use num::traits::real::Real;
 use num::{Integer, Zero};
+use serde::Deserialize;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -65,6 +66,7 @@ impl<F: Float> Location<F> {
     }
 }
 
+#[derive(Debug, Deserialize)]
 pub struct FlowCentrality {
     pub centrifugal: usize,
     pub centripetal: usize,

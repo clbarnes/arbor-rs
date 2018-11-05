@@ -396,7 +396,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
         let mut centralities: FastMap<NodeType, FlowCentrality> = FastMap::default();
 
-        for partition in self.partition().rev() {
+        let partitions: Vec<Vec<NodeType>> = self.partition().collect();
+
+        for partition in partitions.iter().rev() {
             let mut seen_inputs: usize = 0;
             let mut seen_outputs: usize = 0;
 
@@ -419,9 +421,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
                     seen_inputs += n_inputs;
                     seen_outputs += n_outputs;
 
-                    if node == last {
+                    if *node == last {
                         seen_counts.insert(
-                            node,
+                            *node,
                             SeenCount {
                                 inputs: seen_inputs,
                                 outputs: seen_outputs,
@@ -432,7 +434,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
                 let centripetal = seen_inputs * (total_outputs - seen_outputs);
                 let centrifugal = seen_outputs * (total_inputs - seen_inputs);
-                centralities.insert(node, FlowCentrality::new(centrifugal, centripetal));
+                centralities.insert(*node, FlowCentrality::new(centrifugal, centripetal));
             }
         }
 
@@ -705,5 +707,16 @@ mod tests {
         let arbor = make_arbor();
         let sorted: Vec<u64> = arbor.toposort().collect();
         assert_eq!(sorted, vec![1, 2, 3, 6, 7, 4, 5]);
+    }
+
+    #[test]
+    fn flow_centrality() {
+        // todo: test values
+        let arbor = make_arbor();
+        // same synapses as arbor_parser tests
+        let inputs: FastMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
+        let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
+
+        let fcs = arbor.flow_centrality(outputs, inputs).expect("should get an answer");
     }
 }
