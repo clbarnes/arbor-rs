@@ -8,7 +8,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Sub;
 
-
 // todo: trait alias https://github.com/rust-lang/rfcs/pull/1733
 //#[derive(Hash, Debug, Eq, Copy, Ord)]
 //struct NodeType<T: Hash + Debug + Eq + Copy + Ord> {

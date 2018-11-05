@@ -2,9 +2,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 
-use Arbor;
 use utils::{FastMap, FastSet};
-
+use Arbor;
 
 pub struct RootwardPath<'a, NodeType: 'a + Hash + Clone + Eq> {
     arbor: &'a Arbor<NodeType>,
@@ -38,6 +37,11 @@ impl<'a, NodeType: Copy + Debug + Hash + Eq + Ord> Iterator for RootwardPath<'a,
     }
 }
 
+/// Iterate over partitions in the tree as vectors of nodes,
+/// starting with a leaf and ending with a root or branch.
+/// The partitions are in order of the leaf nodes (highest first).
+/// The first partition ends at the root;
+/// subsequent partitions end at branch nodes already included in a previous partition.
 pub struct Partitions<'a, NodeType: 'a + Hash + Clone + Eq> {
     arbor: &'a Arbor<NodeType>,
     branches: FastMap<NodeType, bool>,
@@ -70,17 +74,17 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
                 .arbor
                 .path_to_root(start)
                 .expect("end must be in arbor")
-                {
-                    path.push(node);
+            {
+                path.push(node);
 
-                    // must be a better way to do this with Entry
-                    if let Some(was_visited) = self.branches.remove(&node) {
-                        self.branches.insert(node, true);
-                        if was_visited {
-                            return path;
-                        }
+                // must be a better way to do this with Entry
+                if let Some(was_visited) = self.branches.remove(&node) {
+                    self.branches.insert(node, true);
+                    if was_visited {
+                        return path;
                     }
                 }
+            }
             path
         })
     }
@@ -110,6 +114,10 @@ impl<NodeType: Hash + Eq + Copy + Ord + Debug> BranchAndEndNodes<NodeType> {
         }
 
         let n_branches = branches.len();
-        BranchAndEndNodes { branches, ends, n_branches }
+        BranchAndEndNodes {
+            branches,
+            ends,
+            n_branches,
+        }
     }
 }

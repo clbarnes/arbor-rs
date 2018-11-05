@@ -1,13 +1,9 @@
-use utils::{
-    cmp_len, FastKeys, FastMap, FastSet, FlowCentrality,
-    Location, NodesDistanceTo
-};
-use arbor_features::{BranchAndEndNodes, RootwardPath, Partitions};
-use algorithms::{Toposort, DepthFirstSearch};
+use algorithms::{DepthFirstSearch, Toposort};
+use arbor_features::{BranchAndEndNodes, Partitions, RootwardPath};
+use utils::{cmp_len, FastKeys, FastMap, FastSet, FlowCentrality, Location, NodesDistanceTo};
 
 use num::traits::float::Float;
 use num::Zero;
-use std::collections::hash_map::Keys;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::Chain;
@@ -349,21 +345,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn find_branch_and_end_nodes(&self) -> BranchAndEndNodes<NodeType> {
         // todo: cache this
-//        let mut branches: FastMap<NodeType, usize> = FastMap::default();
-//        let mut ends: FastSet<NodeType> = FastSet::default();
-//
-//        for (node, degree) in self.out_degrees().iter() {
-//            match degree {
-//                0 => {
-//                    ends.insert(node.clone());
-//                }
-//                1 => (),
-//                _ => {
-//                    branches.insert(node.clone(), degree.clone());
-//                }
-//            };
-//        }
-
         BranchAndEndNodes::new(self)
     }
 
@@ -393,10 +374,69 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn flow_centrality(
         &self,
-        targets: FastMap<NodeType, usize>,
-        sources: FastMap<NodeType, usize>,
+        outputs: FastMap<NodeType, usize>,
+        inputs: FastMap<NodeType, usize>,
     ) -> Option<FastMap<NodeType, FlowCentrality>> {
-        unimplemented!()
+        // targets = outputs
+        // sources = inputs
+
+        let total_outputs: usize = outputs.values().sum();
+        let total_inputs: usize = inputs.values().sum();
+
+        if total_outputs == 0 && total_inputs == 0 {
+            return None;
+        }
+
+        struct SeenCount {
+            pub inputs: usize,
+            pub outputs: usize,
+        }
+
+        let mut seen_counts: FastMap<NodeType, SeenCount> = FastMap::default();
+
+        let mut centralities: FastMap<NodeType, FlowCentrality> = FastMap::default();
+
+        for partition in self.partition().rev() {
+            let mut seen_inputs: usize = 0;
+            let mut seen_outputs: usize = 0;
+
+            let last = *partition.last().expect("partitions are not empty");
+
+            for node in partition {
+                // todo: can probably do this with a match, map_or_else or similar
+                if seen_counts.contains_key(&node) {
+                    let count = seen_counts.get_mut(&node).expect("just checked it's there");
+
+                    seen_inputs += count.inputs;
+                    seen_outputs += count.outputs;
+
+                    count.inputs = seen_inputs;
+                    count.outputs = seen_outputs;
+                } else {
+                    let n_inputs = inputs.get(&node).unwrap_or(&0);
+                    let n_outputs = outputs.get(&node).unwrap_or(&0);
+
+                    seen_inputs += n_inputs;
+                    seen_outputs += n_outputs;
+
+                    if node == last {
+                        seen_counts.insert(
+                            node,
+                            SeenCount {
+                                inputs: seen_inputs,
+                                outputs: seen_outputs,
+                            },
+                        );
+                    }
+                }
+
+                let centripetal = seen_inputs * (total_outputs - seen_outputs);
+                let centrifugal = seen_outputs * (total_inputs - seen_inputs);
+                centralities.insert(node, FlowCentrality::new(centrifugal, centripetal));
+            }
+        }
+
+        Some(centralities)
     }
 
     pub fn has_node(&self, node: NodeType) -> bool {
@@ -639,8 +679,7 @@ mod tests {
                     z: 0.0,
                 },
             ),
-        ]
-        .into_iter()
+        ].into_iter()
         .collect();
 
         let orders = arbor.nodes_distance_to(3, locations);

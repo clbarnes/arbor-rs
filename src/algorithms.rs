@@ -1,10 +1,9 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use Arbor;
-use utils::FastMap;
 use arbor_features::Partitions;
-
+use utils::FastMap;
+use Arbor;
 
 // could base this on DFS instead
 pub struct Toposort<'a, NodeType: 'a + Hash + Clone + Eq> {

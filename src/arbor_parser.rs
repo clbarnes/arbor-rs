@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::result::Result::Err;
 use std::result::Result::Ok;
-use utils::{FastMap, FastSet, Location};
+use utils::{FastMap, Location};
 use Arbor;
 
 // todo: figure out strategy for access control
