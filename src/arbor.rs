@@ -275,7 +275,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn nodes_distance_to_root<F: Float>(
         &self,
-        positions: FastMap<NodeType, Location<F>>,
+        positions: &FastMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
         self.nodes_distance_to(self.root.expect("Arbor has no root"), positions)
     }
@@ -283,7 +283,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     pub fn nodes_distance_to<F: Float>(
         &self,
         target: NodeType,
-        positions: FastMap<NodeType, Location<F>>,
+        positions: &FastMap<NodeType, Location<F>>,
     ) -> NodesDistanceTo<NodeType, F> {
         let msg = "positions did not contain all required nodes";
         let distance_fn = |n1: NodeType, n2: NodeType| {
@@ -699,7 +699,7 @@ mod tests {
         let arbor = make_arbor();
         let locations = make_locations();
 
-        let orders = arbor.nodes_distance_to(3, locations);
+        let orders = arbor.nodes_distance_to(3, &locations);
         let expected: FastMap<u64, f64> = vec![(3, 0.0), (4, 1.0), (5, 2.0), (6, 3.0), (7, 4.0)]
             .into_iter()
             .collect();

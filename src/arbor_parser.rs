@@ -456,7 +456,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> Default for ArborParser
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F> {
-    fn create_synapse_map(&self) -> FastMap<NodeType, usize> {
+    pub fn create_synapse_map(&self) -> FastMap<NodeType, usize> {
         let mut out: FastMap<NodeType, usize> = FastMap::default();
 
         for (key, value) in self.inputs.iter().chain(self.outputs.iter()) {
@@ -471,6 +471,10 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
         tags: HashMap<String, Vec<NodeType>>,
     ) -> ArborParser<NodeType, F> {
         unimplemented!();
+    }
+
+    pub fn distances_to_root(&self) -> NodesDistanceTo<NodeType, F> {
+        self.arbor.nodes_distance_to_root(&self.locations)
     }
 
     // todo: collapse short branches too?
