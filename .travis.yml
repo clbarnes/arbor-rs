@@ -1,0 +1,24 @@
+notifications:
+  email: false
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+cache: cargo
+
+matrix:
+  allow_failures:
+  - rust: nightly
+  fast_finish: true
+
+before_install:
+  - rustup component add rustfmt-preview
+  - rustup component add clippy-preview
+install: cargo build --verbose
+script:
+  - cargo test --verbose
+  - cargo fmt --check
+after_success:
+  - cargo clippy
+  - cargo bench
