@@ -15,7 +15,7 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> RootwardPath<'a, NodeType> {
         arbor: &Arbor<NodeType>,
         start: NodeType,
     ) -> Result<RootwardPath<NodeType>, &'static str> {
-        if !arbor.has_parent(start) && arbor.root.clone().map_or(false, |n| start != n) {
+        if !arbor.has_parent(start) && arbor.root.map_or(false, |n| start != n) {
             Err("No path to root: Arbor does not contain starting node")
         } else {
             Ok(RootwardPath {

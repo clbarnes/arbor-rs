@@ -489,11 +489,14 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         }
     }
 
-    /// Remove given node and all nodes distal to it.
-    pub fn prune(&mut self, cut: NodeType) -> &Arbor<NodeType> {
-        self.dfs(cut).map(|(d, _p)| self.edges.remove(&d)).last();
-
-        self
+    /// Remove given node and all nodes distal to it. Return the set of nodes removed.
+    pub fn prune(&mut self, cut: NodeType) -> FastSet<NodeType> {
+        self.dfs(cut)
+            .map(|(dist, _prox)| {
+                self.edges.remove(&dist);
+                dist
+            })
+            .collect()
     }
 
     pub fn toposort(&self) -> Toposort<NodeType> {
@@ -538,7 +541,7 @@ mod tests {
     fn make_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
         let mut arbor = Arbor::default();
-        arbor.add_edges(&edges);
+        arbor.add_edges(&edges).expect("fail");
         arbor
     }
 
@@ -608,7 +611,9 @@ mod tests {
     #[test]
     fn add_edges() {
         let mut arbor = Arbor::default();
-        arbor.add_edges(&vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3]);
+        arbor
+            .add_edges(&vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3])
+            .expect("fail");
         assert_eq!(arbor.root.unwrap(), 1);
         assert_eq!(arbor.edges.len(), 6);
     }

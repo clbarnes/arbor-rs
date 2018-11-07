@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::repeat;
 use utils::FastMap;
-use utils::NodesDistanceTo;
 use Arbor;
 use ArborParser;
 

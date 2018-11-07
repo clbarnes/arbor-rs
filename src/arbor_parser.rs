@@ -1,18 +1,20 @@
 use num::traits::float::Float;
-use serde::de;
-use serde::de::SeqAccess;
-use serde::de::Visitor;
-use serde::Deserialize;
-use serde::Deserializer;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::result::Result::Err;
 use std::result::Result::Ok;
-use utils::NodesDistanceTo;
-use utils::{FastMap, Location};
+
+use serde::de;
+use serde::de::SeqAccess;
+use serde::de::Visitor;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde_json::Value;
+
+use arbor_features::RootwardPath;
+use utils::{FastMap, FastSet, Location, NodesDistanceTo};
 use Arbor;
 
 // todo: figure out strategy for access control
@@ -467,18 +469,77 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
         out
     }
 
-    fn collapse_artifactual_branches(
+    /// Find end nodes tagged with "not a branch" and remove their branch from the arbor.
+    /// Their synapse counts are added to those of the branch at which the removal terminates.
+    /// Note: if all end nodes downstream of a branch point are "not a branch", that branch point
+    /// and its predecessors will also be removed.
+    /// If all end nodes are "not a branch", only the root will remain.
+    pub fn collapse_artifactual_branches(
         &mut self,
         tags: HashMap<String, Vec<NodeType>>,
-    ) -> ArborParser<NodeType, F> {
-        unimplemented!();
+    ) -> Vec<NodeType> {
+        let mut to_prune: Vec<NodeType> = Vec::default();
+
+        let not_branches: FastSet<NodeType> = match tags.get("not a branch") {
+            Some(v) => v.iter().cloned().collect(),
+            None => return to_prune,
+        };
+
+        let branches_ends = self.arbor.find_branch_and_end_nodes();
+        let mut branches = branches_ends.branches.clone();
+
+        let root = self.arbor.root.expect("has root");
+
+        for end in not_branches.intersection(&branches_ends.ends) {
+            let mut prev = *end;
+
+            to_prune.push(prev);
+            let mut inputs = *self.inputs.get(&prev).unwrap_or(&0);
+            let mut outputs = *self.outputs.get(&prev).unwrap_or(&0);
+
+            for next in RootwardPath::new(&self.arbor, *end)
+                .expect("just checked")
+                .skip(1)
+            {
+                let terminate = next == root || match branches.get_mut(&next) {
+                    Some(count) => {
+                        if *count >= 2 {
+                            *count -= 1;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    None => false,
+                };
+
+                if terminate {
+                    *self.inputs.entry(next).or_insert(0) += inputs;
+                    *self.outputs.entry(next).or_insert(0) += outputs;
+                    break;
+                }
+
+                prev = next;
+
+                to_prune.push(prev);
+                inputs += self.inputs.get(&prev).unwrap_or(&0);
+                outputs += self.outputs.get(&prev).unwrap_or(&0);
+            }
+
+            for n in to_prune.iter() {
+                self.arbor.edges.remove(&n);
+                self.inputs.remove(&n);
+                self.outputs.remove(&n);
+                self.locations.remove(&n);
+            }
+        }
+
+        to_prune
     }
 
     pub fn distances_to_root(&self) -> NodesDistanceTo<NodeType, F> {
         self.arbor.nodes_distance_to_root(&self.locations)
     }
-
-    // todo: collapse short branches too?
 }
 
 impl ArborParser<u64, f64> {
@@ -519,7 +580,7 @@ mod tests {
     fn small_arbor() -> Arbor<u64> {
         let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
         let mut arbor = Arbor::default();
-        arbor.add_edges(&edges);
+        arbor.add_edges(&edges).expect("fail");
         arbor
     }
 
@@ -573,7 +634,7 @@ mod tests {
     #[test]
     fn deser_skeleton_response() {
         let s = get_skeleton_str();
-        let skel_response: SkeletonResponse = serde_json::from_str(&s).expect("It didn't work :(");
+        let _sr: SkeletonResponse = serde_json::from_str(&s).expect("It didn't work :(");
     }
 
     #[test]
@@ -587,7 +648,7 @@ mod tests {
     #[test]
     fn deser_arbor_response() {
         let s = get_arbor_str();
-        let arbor_response: ArborResponse = serde_json::from_str(&s).expect("It didn't work :(");
+        let _ar: ArborResponse = serde_json::from_str(&s).expect("It didn't work :(");
     }
 
     #[test]
@@ -602,19 +663,54 @@ mod tests {
     fn parse_real_arbor() {
         let s = read_file("3034133/compact-arbor.json");
         let response: ArborResponse = serde_json::from_str(&s).expect("fail");
-        let ap = ArborParser::new(Response::Arbor(response)).expect("fail");
+        let _ap = ArborParser::new(Response::Arbor(response)).expect("fail");
     }
 
     #[test]
     fn parse_real_skeleton() {
         let s = read_file("3034133/compact-skeleton.json");
         let response: SkeletonResponse = serde_json::from_str(&s).expect("fail");
-        let ap = ArborParser::new(Response::Skeleton(response)).expect("fail");
+        let _ap = ArborParser::new(Response::Skeleton(response)).expect("fail");
     }
 
     #[test]
     fn connector_relation_from_i64() {
         let rel = ConnectorRelation::from_i64(0).expect("didn't work");
         assert_eq!(rel, ConnectorRelation::Presynaptic);
+    }
+
+    #[test]
+    fn collapse_artifactual_branches() {
+        let mut ap = small_arborparser();
+
+        let tags: HashMap<String, Vec<u64>> = vec![("not a branch".to_owned(), vec![7, 4])]
+            .into_iter()
+            .collect();
+        let pruned = ap.collapse_artifactual_branches(tags);
+
+        assert_eq!(pruned, vec![7, 6]);
+
+        let expected_edges: FastMap<u64, u64> =
+            vec![(5, 4), (4, 3), (3, 2), (2, 1)].into_iter().collect();
+        assert_eq!(ap.arbor.edges, expected_edges);
+
+        assert_eq!(ap.inputs.get(&3).expect("should have"), &2);
+    }
+
+    #[test]
+    fn collapse_artifactual_branches_retains_root() {
+        let mut ap = small_arborparser();
+
+        let tags: HashMap<String, Vec<u64>> = vec![("not a branch".to_owned(), vec![7, 4, 5])]
+            .into_iter()
+            .collect();
+        ap.collapse_artifactual_branches(tags);
+
+        assert_eq!(ap.arbor.edges.is_empty(), true);
+
+        let root = ap.arbor.root.expect("should have");
+        assert_eq!(ap.inputs.get(&root).expect("should have"), &2);
+
+        assert_eq!(ap.outputs.get(&root).expect("should have"), &2);
     }
 }
