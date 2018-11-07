@@ -87,8 +87,8 @@ impl FlowCentrality {
 
 #[derive(Debug, PartialEq)]
 pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
-    distances: FastMap<NodeType, D>,
-    max: D,
+    pub distances: FastMap<NodeType, D>,
+    pub max: D,
 }
 
 impl<NodeType: Hash + Debug + Eq, I: Integer + Clone> NodesDistanceTo<NodeType, I> {

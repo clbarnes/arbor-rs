@@ -11,6 +11,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::result::Result::Err;
 use std::result::Result::Ok;
+use utils::NodesDistanceTo;
 use utils::{FastMap, Location};
 use Arbor;
 
@@ -430,7 +431,7 @@ pub struct ArborResponse {
     tags: HashMap<String, Vec<u64>>,
 }
 
-enum Response {
+pub enum Response {
     // todo: is this even necessary? They both impl ArborParseable and so are treated the same by callers
     Skeleton(SkeletonResponse),
     Arbor(ArborResponse),
@@ -481,7 +482,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 }
 
 impl ArborParser<u64, f64> {
-    fn new(response: Response) -> Result<ArborParser<u64, f64>, &'static str> {
+    pub fn new(response: Response) -> Result<ArborParser<u64, f64>, &'static str> {
         // todo: must be a way to do this with traits
         match response {
             Response::Arbor(r) => r.to_arborparser(),

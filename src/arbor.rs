@@ -592,7 +592,8 @@ mod tests {
                     z: 0.0,
                 },
             ),
-        ].into_iter()
+        ]
+        .into_iter()
         .collect()
     }
 
