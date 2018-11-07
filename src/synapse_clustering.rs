@@ -7,6 +7,7 @@ use utils::NodesDistanceTo;
 use Arbor;
 use ArborParser;
 
+#[derive(Debug, Clone)]
 pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float> {
     arbor: Arbor<NodeType>,
     synapses: FastMap<NodeType, usize>,

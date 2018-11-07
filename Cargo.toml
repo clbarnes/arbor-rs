@@ -16,3 +16,11 @@ bencher = "0.1.5"
 [[bench]]
 name = "arbor"
 harness = false
+
+[[bench]]
+name = "arbor_parser"
+harness = false
+
+[[bench]]
+name = "synapse_clustering"
+harness = false

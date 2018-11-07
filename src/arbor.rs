@@ -39,6 +39,14 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         Ok(a)
     }
 
+    pub fn root(&mut self) -> Option<&NodeType> {
+        if self.root.is_none() {
+            self.root = self.find_root().expect("failed to find root");
+        }
+
+        self.root.as_ref()
+    }
+
     /// Return whether arbor has any nodes
     fn is_empty(&self) -> bool {
         self.edges.is_empty() && self.root.is_none()

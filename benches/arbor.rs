@@ -88,22 +88,6 @@ fn bench_dfs(b: &mut Bencher) {
     })
 }
 
-fn bench_deser_arbor(b: &mut Bencher) {
-    let s = read_file("3034133/compact-arbor.json");
-    b.iter(|| {
-        let response: ArborResponse = serde_json::from_str(&s).expect("fail");
-        let _ap = response.to_arborparser().expect("fail");
-    })
-}
-
-fn bench_deser_skeleton(b: &mut Bencher) {
-    let s = read_file("3034133/compact-skeleton.json");
-    b.iter(|| {
-        let response: SkeletonResponse = serde_json::from_str(&s).expect("fail");
-        let _ap = response.to_arborparser().expect("fail");
-    })
-}
-
 benchmark_group!(clone, bench_clone, bench_reroot);
 benchmark_group!(
     noclone,
@@ -114,5 +98,4 @@ benchmark_group!(
     bench_toposort,
     bench_dfs,
 );
-benchmark_group!(parse, bench_deser_arbor, bench_deser_skeleton);
-benchmark_main!(clone, noclone, parse);
+benchmark_main!(clone, noclone);
