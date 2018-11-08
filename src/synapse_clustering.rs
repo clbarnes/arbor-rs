@@ -489,9 +489,19 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     ) -> Option<Axon<NodeType>> {
         let flow_centralities = arbor_parser.flow_centrality()?;
         let regions = Self::find_arbor_regions(&arbor_parser.arbor, &flow_centralities, fraction)?;
+        let output_treenodes =
+            arbor_parser
+                .outputs
+                .iter()
+                .fold(FastSet::default(), |mut accum, (id, n)| {
+                    if n >= &1 {
+                        accum.insert(*id);
+                    }
+                    accum
+                });
         let cut = Self::find_axon_cut(
             &arbor_parser.arbor,
-            &arbor_parser.outputs,
+            &output_treenodes,
             &regions.above,
             &positions,
         )?;
@@ -515,7 +525,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     /// The returned node is present in 'above'.
     fn find_axon_cut(
         arbor: &Arbor<NodeType>,
-        outputs: &FastMap<NodeType, usize>,
+        output_treenodes: &FastSet<NodeType>,
         above: &FastSet<NodeType>,
         positions: &FastMap<NodeType, Location<f64>>,
     ) -> Option<NodeType> {
