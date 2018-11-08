@@ -2,9 +2,26 @@ use num::Float;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::repeat;
+
+use utils::ArborRegions;
+use utils::Axon;
 use utils::FastMap;
+use utils::FastSet;
+use utils::FlowCentrality;
+use utils::Location;
 use Arbor;
 use ArborParser;
+
+fn entropy(p: f64) -> Option<f64> {
+    // todo: make generic
+    if p <= 0.0 || p >= 1.0 {
+        return None;
+    }
+
+    let p_i = 1.0 - p;
+
+    Some(-(p * p.ln() + p_i * p_i.ln()))
+}
 
 #[derive(Debug, Clone)]
 pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float> {
@@ -161,12 +178,183 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         synapse_distances
     }
 
+    /// Compute a map from treenodes to an array of cable distances to all arbor synapses
     pub fn synapse_distances(&mut self) -> &FastMap<NodeType, Vec<f64>> {
         if self.synapse_distances.is_none() {
             self.synapse_distances = Some(self._calculate_synapse_distances());
         }
 
         self.synapse_distances.as_ref().expect("just checked")
+    }
+
+    /// Return a map of treenodes to cluster index, based on the distance map
+    pub fn density_hill_map(&self) -> FastMap<NodeType, usize> {
+        unimplemented!()
+    }
+
+    /// Return a map of cluster ID to treenode
+    fn clusters(
+        &self,
+        density_hill_map: FastMap<NodeType, usize>,
+    ) -> FastMap<usize, FastSet<NodeType>> {
+        let mut clusters = FastMap::new();
+
+        for (node, cluster) in density_hill_map.iter() {
+            let entry = clusters.entry(*cluster).or_insert(FastSet::new());
+            entry.insert(*node);
+        }
+
+        clusters
+    }
+
+    /// Return a map of cluster ID to number of treenodes in the cluster
+    fn cluster_sizes(&self, density_hill_map: &FastMap<NodeType, usize>) -> FastMap<usize, usize> {
+        let mut sizes = FastMap::new();
+
+        for (node, cluster) in density_hill_map.iter() {
+            let entry = sizes.entry(*cluster).or_insert(0);
+            *entry += 1;
+        }
+
+        sizes
+    }
+
+    /// Compute the sum of cluster entropies,
+    /// measured as a deviation from uniformity relative to the arbor as a whole.
+    fn segregation_index(
+        &self,
+        clusters: &FastMap<usize, FastSet<NodeType>>,
+        outputs: &FastMap<NodeType, usize>,
+        inputs: &FastMap<NodeType, usize>,
+    ) -> f64 {
+        struct ClusterInfo {
+            pub id: usize,
+            pub n_inputs: usize,
+            pub n_outputs: usize,
+            pub n_synapses: usize,
+            pub entropy: f64,
+        }
+
+        let cluster_infos =
+            clusters
+                .iter()
+                .fold(Vec::default(), |mut accum, (cluster_id, nodes)| {
+                    let init = ClusterInfo {
+                        id: *cluster_id,
+                        n_inputs: 0,
+                        n_outputs: 0,
+                        n_synapses: 0,
+                        entropy: 0.0,
+                    };
+
+                    let mut cluster_info = nodes.iter().fold(init, |mut c_info, node| {
+                        c_info.n_outputs += outputs.get(node).unwrap_or(&0);
+                        c_info.n_inputs += outputs.get(node).unwrap_or(&0);
+                        c_info
+                    });
+
+                    cluster_info.n_synapses = cluster_info.n_inputs + cluster_info.n_outputs;
+
+                    if cluster_info.n_synapses == 0 {
+                        return accum;
+                    }
+
+                    let p = cluster_info.n_inputs as f64 / cluster_info.n_synapses as f64;
+                    cluster_info.entropy = entropy(p).unwrap_or(0.0);
+
+                    accum.push(cluster_info);
+                    accum
+                });
+
+        let mut n_synapses: usize = 0;
+        let mut n_inputs: usize = 0;
+        let mut S = 0.0;
+
+        for cluster_info in cluster_infos {
+            n_synapses += cluster_info.n_synapses;
+            n_inputs += cluster_info.n_inputs;
+            S += cluster_info.n_synapses as f64 * cluster_info.entropy;
+        }
+
+        if S == 0.0 {
+            return 1.0;
+        }
+
+        let p = n_inputs as f64 / n_synapses as f64;
+
+        if let Some(S_norm) = entropy(p) {
+            1.0 - S / S_norm
+        } else {
+            1.0
+        }
+    }
+
+    /// Find the treenodes in the arbor which have a centrifugal flow centrality of zero,
+    /// those belonging to the max-FC plateau,
+    /// and those with FC above `fraction` of the max FC
+    fn find_arbor_regions(
+        arbor: &Arbor<NodeType>,
+        flow_centralities: &FastMap<NodeType, FlowCentrality>,
+        fraction: f64,
+    ) -> Option<ArborRegions<NodeType>> {
+        let max = flow_centralities
+            .values()
+            .map(|fc| fc.centrifugal)
+            .max()
+            .unwrap_or(0);
+        if max == 0 {
+            return None;
+        }
+
+        let threshold = fraction * (max as f64);
+        let mut regions = ArborRegions::default();
+
+        for node in arbor.nodes() {
+            let fc = flow_centralities
+                .get(node)
+                .expect("flow centralities does not contain all nodes");
+            if fc.centrifugal as f64 > threshold {
+                regions.above.insert(*node);
+                if fc.centrifugal == max {
+                    regions.plateau.insert(*node);
+                }
+            } else if fc.sum == 0 {
+                regions.zeros.insert(*node);
+            }
+        }
+
+        Some(regions)
+    }
+
+    fn find_axon(
+        &self,
+        arbor_parser: &ArborParser<NodeType, f64>,
+        fraction: f64,
+        positions: &FastMap<NodeType, Location<f64>>,
+    ) -> Option<Axon<NodeType>> {
+        let flow_centralities = arbor_parser.flow_centrality()?;
+        let regions = Self::find_arbor_regions(&arbor_parser.arbor, &flow_centralities, fraction)?;
+        let cut = Self::find_axon_cut(
+            &arbor_parser.arbor,
+            &arbor_parser.outputs,
+            &regions.above,
+            &positions,
+        )?;
+
+        Some(Axon {
+            arbor: arbor_parser.arbor.sub_arbor(cut),
+            fc_max_plateau: regions.plateau,
+            fc_zeros: regions.zeros,
+        })
+    }
+
+    fn find_axon_cut(
+        arbor: &Arbor<NodeType>,
+        outputs: &FastMap<NodeType, usize>,
+        above: &FastSet<NodeType>,
+        positions: &FastMap<NodeType, Location<f64>>,
+    ) -> Option<NodeType> {
+        unimplemented!()
     }
 }
 

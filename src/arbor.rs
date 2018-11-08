@@ -382,8 +382,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
     pub fn flow_centrality(
         &self,
-        outputs: FastMap<NodeType, usize>,
-        inputs: FastMap<NodeType, usize>,
+        outputs: &FastMap<NodeType, usize>,
+        inputs: &FastMap<NodeType, usize>,
     ) -> Option<FastMap<NodeType, FlowCentrality>> {
         // targets = outputs
         // sources = inputs
@@ -747,7 +747,7 @@ mod tests {
         let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
 
         let fcs = arbor
-            .flow_centrality(outputs, inputs)
+            .flow_centrality(&outputs, &inputs)
             .expect("should get an answer");
     }
 

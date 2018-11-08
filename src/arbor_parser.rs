@@ -14,6 +14,7 @@ use serde::Deserializer;
 use serde_json::Value;
 
 use arbor_features::RootwardPath;
+use utils::FlowCentrality;
 use utils::{FastMap, FastSet, Location, NodesDistanceTo};
 use Arbor;
 
@@ -539,6 +540,10 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
 
     pub fn distances_to_root(&self) -> NodesDistanceTo<NodeType, F> {
         self.arbor.nodes_distance_to_root(&self.locations)
+    }
+
+    pub fn flow_centrality(&self) -> Option<FastMap<NodeType, FlowCentrality>> {
+        self.arbor.flow_centrality(&self.outputs, &self.inputs)
     }
 }
 

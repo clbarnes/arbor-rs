@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Sub;
+use Arbor;
 
 // todo: trait alias https://github.com/rust-lang/rfcs/pull/1733
 //#[derive(Hash, Debug, Eq, Copy, Ord)]
@@ -115,4 +116,26 @@ impl<NodeType: Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> 
             max: max.to_owned(),
         }
     }
+}
+
+pub struct ArborRegions<NodeType: Hash + Debug + Eq + Copy + Ord> {
+    pub above: FastSet<NodeType>,
+    pub plateau: FastSet<NodeType>,
+    pub zeros: FastSet<NodeType>,
+}
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Default for ArborRegions<NodeType> {
+    fn default() -> Self {
+        ArborRegions {
+            above: FastSet::default(),
+            plateau: FastSet::default(),
+            zeros: FastSet::default(),
+        }
+    }
+}
+
+pub struct Axon<NodeType: Hash + Debug + Eq + Copy + Ord> {
+    pub arbor: Arbor<NodeType>,
+    pub fc_max_plateau: FastSet<NodeType>,
+    pub fc_zeros: FastSet<NodeType>,
 }
