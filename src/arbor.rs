@@ -356,6 +356,10 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         BranchAndEndNodes::new(self)
     }
 
+    /// Iterate through vecs of nodes forming partitions.
+    /// Each starts at an end node.
+    /// The first ends at the root node.
+    /// Every other partition ends at a branch node already included in a previous partition.
     pub fn partition(&self) -> Partitions<NodeType> {
         Partitions::new(self)
     }

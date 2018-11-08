@@ -139,3 +139,13 @@ pub struct Axon<NodeType: Hash + Debug + Eq + Copy + Ord> {
     pub fc_max_plateau: FastSet<NodeType>,
     pub fc_zeros: FastSet<NodeType>,
 }
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Axon<NodeType> {
+    pub fn new(arbor: Arbor<NodeType>, regions: ArborRegions<NodeType>) -> Self {
+        Self {
+            arbor,
+            fc_max_plateau: regions.plateau,
+            fc_zeros: regions.zeros,
+        }
+    }
+}
