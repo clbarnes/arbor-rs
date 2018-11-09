@@ -4,6 +4,7 @@ use std::hash::Hash;
 use std::iter::repeat;
 use std::usize;
 
+use std::collections::VecDeque;
 use utils::ArborRegions;
 use utils::Axon;
 use utils::FastMap;
@@ -348,9 +349,9 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     }
 
     /// Return a map of cluster ID to treenode
-    fn clusters(
+    pub fn clusters(
         &self,
-        density_hill_map: FastMap<NodeType, usize>,
+        density_hill_map: &FastMap<NodeType, usize>,
     ) -> FastMap<usize, FastSet<NodeType>> {
         let mut clusters = FastMap::new();
 
@@ -376,8 +377,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
     /// Compute the sum of cluster entropies,
     /// measured as a deviation from uniformity relative to the arbor as a whole.
-    fn segregation_index(
-        &self,
+    pub fn segregation_index(
         clusters: &FastMap<usize, FastSet<NodeType>>,
         outputs: &FastMap<NodeType, usize>,
         inputs: &FastMap<NodeType, usize>,
@@ -481,8 +481,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         Some(regions)
     }
 
-    fn find_axon(
-        &self,
+    pub fn find_axon(
         arbor_parser: &ArborParser<NodeType, f64>,
         fraction: f64,
         positions: &FastMap<NodeType, Location<f64>>,
@@ -529,8 +528,123 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         above: &FastSet<NodeType>,
         positions: &FastMap<NodeType, Location<f64>>,
     ) -> Option<NodeType> {
-        unimplemented!()
+        let mut above_vec: Vec<NodeType> = above.iter().cloned().collect();
+
+        if above.len() < 2 {
+            return above_vec.first().cloned();
+        }
+
+        let orders = arbor.nodes_order_from_root().distances;
+        let successors = arbor.all_successors();
+
+        // nearest to furthest
+        above_vec.sort_by_key(|n| orders.get(n).expect("must exist"));
+        let furthest_from_root = *above_vec.last().expect(">2");
+        let closest_to_root = *above_vec.first().expect(">2");
+
+        let node = closest_to_root;
+        let mut open = VecDeque::default();
+        open.push_back(node);
+        let mut max: f64 = 0.0;
+
+        let mut distances = FastMap::default();
+        distances.insert(node, 0.0);
+
+        while !open.is_empty() {
+            let parent = open.pop_front().expect("just checked non-empty");
+            let d = *distances.get(&parent).expect("everything has a distance");
+            let p = positions
+                .get(&parent)
+                .expect("everything has a location")
+                .clone();
+
+            for child in successors.get(&parent).expect("everything has succ").iter() {
+                if !above.contains(child) {
+                    continue;
+                }
+                let dc = d + p
+                    .clone()
+                    .distance_to(positions.get(child).expect("everything has"));
+                distances.insert(*child, dc);
+                if dc > max {
+                    max = dc;
+                }
+                open.push_back(*child);
+            }
+        }
+
+        let threshold = max / 2.0;
+        let beyond: Vec<NodeType> = above_vec
+            .iter()
+            .filter(|n| match distances.get(n) {
+                Some(d) => d > &threshold,
+                None => false,
+            })
+            .cloned()
+            .collect();
+
+        let branches_ends = arbor.find_branch_and_end_nodes();
+        let mut lowest = None;
+        let mut lowest_order = usize::MAX;
+
+        for node in above_vec {
+            match distances.get(&node) {
+                Some(d) => {
+                    if d <= &threshold {
+                        continue;
+                    }
+                }
+                None => continue,
+            }
+            let order = orders.get(&node).expect("everything has order");
+
+            if output_treenodes.contains(&node) {
+                if order < &lowest_order {
+                    lowest = Some(node);
+                    lowest_order = *order;
+                }
+            } else if branches_ends.branches.contains_key(&node) {
+                if order >= &lowest_order
+                    || (match arbor.get_parent(node) {
+                        Some(n) => !above.contains(n),
+                        None => false,
+                    }) {
+                    continue;
+                }
+
+                let mut count: usize = 0;
+                for child in successors.get(&node).expect("has successors").iter() {
+                    // todo: this does arbor.all_successors() every loop - slow
+                    if above.contains(child)
+                        || subarbor_has_outputs(&arbor, &child, &output_treenodes)
+                    {
+                        if count >= 1 {
+                            lowest = Some(node);
+                            lowest_order = *order;
+                            break;
+                        }
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        lowest.or(Some(furthest_from_root))
     }
+}
+
+fn subarbor_has_outputs<NodeType: Hash + Copy + Eq + Debug + Ord>(
+    arbor: &Arbor<NodeType>,
+    root: &NodeType,
+    output_nodes: &FastSet<NodeType>,
+) -> bool {
+    for (distal, _proximal) in arbor.dfs(*root) {
+        if output_nodes.contains(&distal) {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -545,6 +659,7 @@ mod tests {
     use ArborResponse;
 
     const LAMBDA: f64 = 2000.0;
+    const FRACTION: f64 = 0.9;
 
     fn read_file(fname: &str) -> String {
         let mut f = File::open(to_path(fname)).expect("file not found");
@@ -562,14 +677,14 @@ mod tests {
         d
     }
 
-    fn make_arbor() -> ArborParser<u64, f64> {
+    fn make_arborparser() -> ArborParser<u64, f64> {
         let s = read_file("3034133/compact-arbor.json");
         let response: ArborResponse = serde_json::from_str(&s).expect("fail");
         ArborParser::new(Response::Arbor(response)).expect("fail")
     }
 
     fn make_synapse_clustering() -> SynapseClustering<u64, f64> {
-        let ap = make_arbor();
+        let ap = make_arborparser();
         SynapseClustering::new(ap, LAMBDA)
     }
 
@@ -600,5 +715,26 @@ mod tests {
         let values: FastSet<usize> = dhm.values().cloned().collect();
 
         assert_eq!(values.len() >= 2, true)
+    }
+
+    #[test]
+    fn can_segregation_index() {
+        let ap = make_arborparser();
+        let outputs = ap.outputs.clone();
+        let inputs = ap.inputs.clone();
+
+        let mut sc = SynapseClustering::new(ap, LAMBDA);
+
+        let dhm = sc.density_hill_map();
+        let clusters = sc.clusters(&dhm);
+
+        SynapseClustering::segregation_index(&clusters, &outputs, &inputs);
+    }
+
+    #[test]
+    fn can_find_axon() {
+        let ap = make_arborparser();
+        let locations = ap.locations.clone();
+        SynapseClustering::find_axon(&ap, FRACTION, &locations);
     }
 }
