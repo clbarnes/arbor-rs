@@ -562,9 +562,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                 if !above.contains(child) {
                     continue;
                 }
-                let dc = d + p
-                    .clone()
-                    .distance_to(positions.get(child).expect("everything has"));
+                let dc = d + p.distance_to(positions.get(child).expect("everything has"));
                 distances.insert(*child, dc);
                 if dc > max {
                     max = dc;

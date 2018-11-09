@@ -298,7 +298,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             positions
                 .get(&n1)
                 .expect(msg)
-                .clone()
                 .distance_to(positions.get(&n2).expect(msg))
         };
 
@@ -523,7 +522,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             let loc2 = positions
                 .get(n2)
                 .expect("positions does not contain all nodes");
-            accum + loc1.clone().distance_to(loc2)
+            accum + loc1.distance_to(loc2)
         })
     }
 }

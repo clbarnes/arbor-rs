@@ -36,7 +36,7 @@ pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Copy, Clone, PartialEq)]
 pub struct Location<F: Float> {
     pub x: F,
     pub y: F,
@@ -63,7 +63,7 @@ impl<F: Float> Sub<Location<F>> for Location<F> {
 
 impl<F: Float> Location<F> {
     pub fn distance_to(self, other: &Location<F>) -> F {
-        (self - other.clone()).norm()
+        (self - *other).norm()
     }
 }
 
