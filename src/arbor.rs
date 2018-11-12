@@ -9,7 +9,7 @@ use std::hash::Hash;
 use std::iter::Chain;
 use std::option::Iter;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Arbor<NodeType: Hash + Clone + Eq> {
     pub(crate) edges: FastMap<NodeType, NodeType>,
     pub root: Option<NodeType>,

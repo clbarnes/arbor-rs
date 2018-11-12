@@ -67,7 +67,7 @@ trait InfiniteIterator<T>: Iterator<Item = T> {
 
 impl InfiniteIterator<usize> for IdGen {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float> {
     arbor: Arbor<NodeType>,
     synapses: FastMap<NodeType, usize>,

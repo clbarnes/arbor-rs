@@ -440,7 +440,7 @@ pub enum Response {
     Arbor(ArborResponse),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Deserialize)]
 pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     pub arbor: Arbor<NodeType>,
     pub inputs: FastMap<NodeType, usize>,

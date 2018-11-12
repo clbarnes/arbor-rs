@@ -90,7 +90,8 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
     }
 }
 
-pub struct BranchAndEndNodes<NodeType> {
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct BranchAndEndNodes<NodeType: Hash + Eq> {
     pub branches: FastMap<NodeType, usize>,
     pub ends: FastSet<NodeType>,
     pub n_branches: usize,

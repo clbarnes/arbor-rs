@@ -67,7 +67,7 @@ impl<F: Float> Location<F> {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct FlowCentrality {
     pub centrifugal: usize,
     pub centripetal: usize,
@@ -84,7 +84,7 @@ impl FlowCentrality {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct NodesDistanceTo<NodeType: Hash + Debug + Eq, D> {
     pub distances: FastMap<NodeType, D>,
     pub max: D,
@@ -118,6 +118,7 @@ impl<NodeType: Hash + Debug + Eq, F: Real + Clone> NodesDistanceTo<NodeType, F> 
     }
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct ArborRegions<NodeType: Hash + Debug + Eq + Copy + Ord> {
     pub above: FastSet<NodeType>,
     pub plateau: FastSet<NodeType>,
@@ -134,6 +135,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Default for ArborRegions<NodeType
     }
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct Axon<NodeType: Hash + Debug + Eq + Copy + Ord> {
     pub arbor: Arbor<NodeType>,
     pub fc_max_plateau: FastSet<NodeType>,
