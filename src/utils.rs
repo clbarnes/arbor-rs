@@ -1,10 +1,10 @@
-use hashbrown::hash_map::Keys;
-use hashbrown::{HashMap, HashSet};
+use fxhash::{FxHashMap, FxHashSet};
 use num::traits::float::Float;
 use num::traits::real::Real;
 use num::Integer;
 use num::Zero;
 use std::cmp::Ordering;
+use std::collections::hash_map::Keys;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Sub;
@@ -18,11 +18,11 @@ use Arbor;
 
 // Type aliases allow easier switching between hash implementations
 /// Cryptographically insecure mapping, generally for <NodeType, SomethingElse>
-pub type FastMap<T, U> = HashMap<T, U>;
+pub type FastMap<T, U> = FxHashMap<T, U>;
 pub type FastKeys<'a, T, U> = Keys<'a, T, U>;
 
 /// Cryptographically insecure set, generally for <NodeType>
-pub type FastSet<T> = HashSet<T>;
+pub type FastSet<T> = FxHashSet<T>;
 
 pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
     let a_len = a.len();

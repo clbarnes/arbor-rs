@@ -353,10 +353,10 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         &self,
         density_hill_map: &FastMap<NodeType, usize>,
     ) -> FastMap<usize, FastSet<NodeType>> {
-        let mut clusters = FastMap::new();
+        let mut clusters = FastMap::default();
 
         for (node, cluster) in density_hill_map.iter() {
-            let entry = clusters.entry(*cluster).or_insert(FastSet::new());
+            let entry = clusters.entry(*cluster).or_insert(FastSet::default());
             entry.insert(*node);
         }
 
@@ -365,7 +365,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
     /// Return a map of cluster ID to number of treenodes in the cluster
     fn cluster_sizes(&self, density_hill_map: &FastMap<NodeType, usize>) -> FastMap<usize, usize> {
-        let mut sizes = FastMap::new();
+        let mut sizes = FastMap::default();
 
         for (node, cluster) in density_hill_map.iter() {
             let entry = sizes.entry(*cluster).or_insert(0);
