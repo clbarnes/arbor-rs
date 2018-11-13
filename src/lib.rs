@@ -16,6 +16,7 @@ mod arbor_parser;
 pub use arbor_parser::ArborParseable;
 pub use arbor_parser::ArborParser;
 pub use arbor_parser::ArborResponse;
+pub use arbor_parser::Response;
 pub use arbor_parser::SkeletonResponse;
 
 mod synapse_clustering;
@@ -23,4 +24,6 @@ pub use synapse_clustering::SynapseClustering;
 
 mod algorithms;
 mod arbor_features;
-mod utils;
+pub use arbor_features::BranchAndEndNodes;
+pub use arbor_features::Partitions;
+pub mod utils;

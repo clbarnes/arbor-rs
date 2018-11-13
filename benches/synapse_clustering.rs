@@ -91,7 +91,7 @@ fn bench_segregation_index(b: &mut Bencher) {
 
 fn bench_find_axon(b: &mut Bencher) {
     let ap = make_arborparser();
-    let locations = ap.locations.clone();
+    let locations = ap.positions.clone();
 
     b.iter(|| {
         SynapseClustering::find_axon(&ap, FRACTION, &locations);

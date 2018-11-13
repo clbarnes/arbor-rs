@@ -75,7 +75,7 @@ pub trait ArborParseable<C: DescribesConnector> {
             arbor: arbor_locations.arbor,
             inputs: inputs_outputs.inputs,
             outputs: inputs_outputs.outputs,
-            locations: arbor_locations.locations,
+            positions: arbor_locations.locations,
         })
     }
 
@@ -445,7 +445,7 @@ pub struct ArborParser<NodeType: Hash + Eq + Ord + Copy, F: Float> {
     pub arbor: Arbor<NodeType>,
     pub inputs: FastMap<NodeType, usize>,
     pub outputs: FastMap<NodeType, usize>,
-    pub locations: FastMap<NodeType, Location<F>>,
+    pub positions: FastMap<NodeType, Location<F>>,
 }
 
 impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> Default for ArborParser<NodeType, F> {
@@ -454,7 +454,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> Default for ArborParser
             arbor: Arbor::default(),
             inputs: FastMap::default(),
             outputs: FastMap::default(),
-            locations: FastMap::default(),
+            positions: FastMap::default(),
         }
     }
 }
@@ -531,7 +531,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
                 self.arbor.edges.remove(&n);
                 self.inputs.remove(&n);
                 self.outputs.remove(&n);
-                self.locations.remove(&n);
+                self.positions.remove(&n);
             }
         }
 
@@ -539,7 +539,7 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
     }
 
     pub fn distances_to_root(&self) -> NodesDistanceTo<NodeType, F> {
-        self.arbor.nodes_distance_to_root(&self.locations)
+        self.arbor.nodes_distance_to_root(&self.positions)
     }
 
     pub fn flow_centrality(&self) -> Option<FastMap<NodeType, FlowCentrality>> {
@@ -606,7 +606,7 @@ mod tests {
 
         ArborParser {
             arbor: small_arbor(),
-            locations,
+            positions: locations,
             inputs,
             outputs,
         }

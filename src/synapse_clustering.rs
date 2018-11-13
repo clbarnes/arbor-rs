@@ -732,7 +732,7 @@ mod tests {
     #[test]
     fn can_find_axon() {
         let ap = make_arborparser();
-        let locations = ap.locations.clone();
+        let locations = ap.positions.clone();
         SynapseClustering::find_axon(&ap, FRACTION, &locations);
     }
 }
