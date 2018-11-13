@@ -15,10 +15,15 @@ matrix:
 before_install:
   - rustup component add rustfmt-preview
   - rustup component add clippy-preview
+  - nvm install node
 install: cargo build --verbose
+before_script:
+  - git submodule update --init --recursive
+  - cd resources/test/arbor-harness npm install && npm start
+  - cd $TRAVIS_BUILD_DIR
 script:
-  - cargo test --verbose
-  - cargo fmt --check
+  - cargo test --verbose -- --ignored
+  - cargo fmt --all -- --check
 after_success:
   - cargo clippy
   - cargo bench

@@ -1,0 +1,3 @@
+[submodule "resources/test/arbor-harness"]
+	path = resources/test/arbor-harness
+	url = https://github.com/clbarnes/arbor-harness.git
