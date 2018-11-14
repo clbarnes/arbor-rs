@@ -1,5 +1,7 @@
-extern crate arbor;
-extern crate serde_json;
+//extern crate approx;
+//
+//extern crate arbor;
+//extern crate serde_json;
 
 use std::fs::File;
 use std::io::Read;
@@ -15,6 +17,7 @@ use std::hash::Hash;
 const TEST_SKELETON: u64 = 3034133;
 pub const LAMBDA: f64 = 2000.0;
 pub const FRACTION: f64 = 0.9;
+pub const TOLERANCE_ABS_NM: f64 = 1.0;
 
 fn skeleton_root() -> PathBuf {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -57,22 +60,35 @@ pub fn mk_synapse_clustering() -> SynapseClustering<u64, f64> {
     SynapseClustering::new(mk_arbor_parser(), LAMBDA)
 }
 
-pub fn assert_vec_members<T: PartialOrd + PartialEq + Clone + Debug>(
+fn sort_vecs<T: PartialOrd + PartialEq + Clone + Debug>(
     test: &Vec<T>,
     reference: &Vec<T>,
-) {
+) -> (Vec<T>, Vec<T>) {
     let mut v1 = test.clone();
     v1.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     let mut v2 = reference.clone();
     v2.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
+    assert_eq!(v1.len(), v2.len());
+    (v1, v2)
+}
+
+pub fn assert_vec_members<T: PartialOrd + PartialEq + Clone + Debug>(
+    test: &Vec<T>,
+    reference: &Vec<T>,
+) {
+    let (v1, v2) = sort_vecs(test, reference);
     assert_eq!(v1, v2);
 }
 
-//pub fn assert_vec_members_float<T: PartialOrd + PartialEq + Clone + Debug>(test: &Vec<T>, reference: &Vec<T>) {
-//
-//}
+pub fn assert_vec_members_approx(test: &Vec<f64>, reference: &Vec<f64>, tol: f64) {
+    let (v1, v2) = sort_vecs(test, reference);
+
+    for (test_val, ref_val) in v1.iter().zip(v2.iter()) {
+        assert_abs_diff_eq!(test_val, ref_val, epsilon = tol);
+    }
+}
 
 pub fn assert_keys<T: Hash + Eq + Debug + Clone, U>(
     test: &FastMap<T, U>,
@@ -109,4 +125,15 @@ pub fn partitions_to_edges(partitions: Vec<Vec<u64>>) -> FastMap<u64, u64> {
 
 pub fn assert_equivalent_partitions(test: Vec<Vec<u64>>, reference: Vec<Vec<u64>>) {
     assert_eq!(partitions_to_edges(test), partitions_to_edges(reference));
+}
+
+pub fn assert_approx_map<T: Hash + Eq + Debug + Clone>(
+    test: &FastMap<T, f64>,
+    reference: &FastMap<T, f64>,
+    tol: f64,
+) {
+    assert_keys(test, reference);
+    for (key, test_val) in test.iter() {
+        assert_abs_diff_eq!(test_val, &reference[key], epsilon = tol);
+    }
 }

@@ -1,6 +1,10 @@
 extern crate serde_json;
 
 extern crate arbor;
+extern crate serde;
+#[macro_use]
+extern crate approx;
+extern crate num;
 
 mod common;
 

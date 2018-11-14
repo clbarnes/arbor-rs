@@ -2,6 +2,8 @@
 extern crate serde_derive;
 
 #[cfg(test)]
+extern crate approx;
+#[cfg(test)]
 extern crate bencher;
 extern crate fxhash;
 extern crate serde;

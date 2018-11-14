@@ -2,6 +2,8 @@ extern crate serde_json;
 
 extern crate arbor;
 extern crate serde;
+#[macro_use]
+extern crate approx;
 
 use arbor::utils::{FastMap, FastSet, FlowCentrality, NodesDistanceTo};
 use arbor::BranchAndEndNodes;
@@ -9,8 +11,8 @@ use arbor::BranchAndEndNodes;
 mod common;
 
 use common::{
-    assert_equivalent_partitions, assert_keys, assert_vec_members, mk_arbor, mk_arbor_parser,
-    partitions_to_edges, read_file, str_id, val_id,
+    assert_approx_map, assert_equivalent_partitions, assert_keys, assert_vec_members, mk_arbor,
+    mk_arbor_parser, partitions_to_edges, read_file, str_id, val_id, TOLERANCE_ABS_NM,
 };
 use serde_json::Value;
 use std::fmt::Debug;
@@ -83,7 +85,7 @@ fn flow_centrality() {
 }
 
 #[test]
-#[ignore]
+//#[ignore]
 fn nodes_distance_to() {
     // todo: why is this failing
     let ap = mk_arbor_parser();
@@ -93,7 +95,8 @@ fn nodes_distance_to() {
     let reference: NodesDistanceTo<u64, f64> =
         serde_json::from_str(&ref_json).expect("couldn't deser ref data");
 
-    assert_eq!(test, reference);
+    assert_eq!(test.max, reference.max);
+    assert_approx_map(&test.distances, &reference.distances, TOLERANCE_ABS_NM);
 }
 
 #[test]

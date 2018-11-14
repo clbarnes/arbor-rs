@@ -2,6 +2,8 @@ extern crate serde_json;
 
 extern crate arbor;
 extern crate serde;
+#[macro_use]
+extern crate approx;
 
 use arbor::utils::{FastMap, FastSet, FlowCentrality, NodesDistanceTo};
 use arbor::BranchAndEndNodes;
@@ -12,8 +14,9 @@ use arbor::utils::Axon;
 use arbor::Arbor;
 use arbor::SynapseClustering;
 use common::{
-    assert_equivalent_partitions, assert_keys, assert_vec_members, mk_arbor, mk_arbor_parser,
-    mk_synapse_clustering, partitions_to_edges, read_file, str_id, val_id, FRACTION,
+    assert_equivalent_partitions, assert_keys, assert_vec_members, assert_vec_members_approx,
+    mk_arbor, mk_arbor_parser, mk_synapse_clustering, partitions_to_edges, read_file, str_id,
+    val_id, FRACTION, TOLERANCE_ABS_NM,
 };
 use serde_json::Value;
 use std::fmt::Debug;
@@ -33,7 +36,11 @@ fn distance_map() {
 
     assert_keys(&test, &reference);
     for (key, test_val) in test.iter() {
-        assert_vec_members(test_val, reference.get(key).expect("just checked keys"));
+        assert_vec_members_approx(
+            test_val,
+            reference.get(key).expect("just checked keys"),
+            TOLERANCE_ABS_NM,
+        );
     }
 }
 
