@@ -90,7 +90,8 @@ fn density<NodeType: Hash + Copy + Debug + Eq>(
                 sum + exponent.exp()
             });
             (*treenode_id, val)
-        }).collect()
+        })
+        .collect()
 }
 
 impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> {
@@ -576,7 +577,8 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             .filter(|n| match distances.get(n) {
                 Some(d) => d > &threshold,
                 None => false,
-            }).cloned()
+            })
+            .cloned()
             .collect();
 
         let branches_ends = arbor.find_branch_and_end_nodes();

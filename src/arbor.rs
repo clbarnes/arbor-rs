@@ -498,7 +498,8 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             .map(|(dist, _prox)| {
                 self.edges.remove(&dist);
                 dist
-            }).collect()
+            })
+            .collect()
     }
 
     pub fn toposort(&self) -> Toposort<NodeType> {
@@ -605,7 +606,8 @@ mod tests {
                     z: 0.0,
                 },
             ),
-        ].into_iter()
+        ]
+        .into_iter()
         .collect()
     }
 
