@@ -19,7 +19,7 @@ before_install:
 install: cargo build --verbose
 before_script:
   - git submodule update --init --recursive
-  - cd resources/test/arbor-harness npm install && npm start
+  - cd resources/test/arbor-harness && npm install && npm start
   - cd $TRAVIS_BUILD_DIR
 script:
   - cargo test --verbose -- --ignored
