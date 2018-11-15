@@ -87,7 +87,6 @@ fn flow_centrality() {
 #[test]
 //#[ignore]
 fn nodes_distance_to() {
-    // todo: why is this failing
     let ap = mk_arbor_parser();
     let test: NodesDistanceTo<u64, f64> = ap.arbor.nodes_distance_to_root(&ap.positions);
 
@@ -113,7 +112,8 @@ fn nodes_order_from() {
 
 #[test]
 fn partition() {
-    let test: Vec<Vec<u64>> = mk_arbor().partition().collect();
+    let arbor = mk_arbor();
+    let test: Vec<Vec<u64>> = arbor.partition().collect();
 
     let ref_json = read_file("results/arbor/partition.result.json");
     let ref_str: Vec<Vec<Value>> =
@@ -131,7 +131,8 @@ fn partition() {
 
 #[test]
 fn partition_sorted() {
-    let test: Vec<Vec<u64>> = mk_arbor().partition().collect();
+    let arbor = mk_arbor();
+    let test: Vec<Vec<u64>> = arbor.partition().collect();
 
     let ref_json = read_file("results/arbor/partition_sorted.result.json");
     let ref_str: Vec<Vec<Value>> =

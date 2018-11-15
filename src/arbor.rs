@@ -1,5 +1,5 @@
-use algorithms::{DepthFirstSearch, Toposort};
-use arbor_features::{BranchAndEndNodes, Partitions, RootwardPath};
+use algorithms::DepthFirstSearch; //, Toposort};
+use arbor_features::{BranchAndEndNodes, PartitionsClassic, PartitionsTopological, RootwardPath};
 use utils::{cmp_len, FastKeys, FastMap, FastSet, FlowCentrality, Location, NodesDistanceTo};
 
 use num::traits::float::Float;
@@ -45,6 +45,17 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         }
 
         self.root.as_ref()
+    }
+
+    pub fn n_edges(&self) -> usize {
+        self.edges.len()
+    }
+
+    pub fn n_nodes(&self) -> usize {
+        match self.n_edges() {
+            0 => self.root.is_some() as usize,
+            n => n + 1,
+        }
     }
 
     /// Return whether arbor has any nodes
@@ -332,7 +343,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
             self.nodes().map(|n| (*n, Vec::new())).collect();
 
         for (succ, pred) in self.edges.iter() {
-            out.entry(*pred).and_modify(|v| v.push(*succ));
+            out.get_mut(pred).unwrap().push(*succ);
         }
         out
     }
@@ -359,8 +370,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Each starts at an end node.
     /// The first ends at the root node.
     /// Every other partition ends at a branch node already included in a previous partition.
-    pub fn partition(&self) -> Partitions<NodeType> {
-        Partitions::new(self)
+    pub fn partition(&self) -> impl Iterator<Item = Vec<NodeType>> + '_ {
+        PartitionsClassic::new(self)
+        //        PartitionsTopological::new(self)
     }
 
     /// Get partitions in order of length, smallest fist
@@ -371,15 +383,11 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn all_neighbours(&self) -> FastMap<NodeType, Vec<NodeType>> {
-        let mut out: FastMap<NodeType, Vec<NodeType>> = FastMap::default();
+        let mut out: FastMap<NodeType, Vec<NodeType>> =
+            self.nodes().map(|n| (*n, Vec::default())).collect();
         for (succ, pred) in self.edges.iter() {
-            out.entry(pred.clone())
-                .or_insert(Vec::new())
-                .push(succ.clone());
-
-            out.entry(succ.clone())
-                .or_insert(Vec::new())
-                .push(pred.clone());
+            out.get_mut(pred).unwrap().push(*succ);
+            out.get_mut(succ).unwrap().push(*pred);
         }
         out
     }
@@ -389,9 +397,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         outputs: &FastMap<NodeType, usize>,
         inputs: &FastMap<NodeType, usize>,
     ) -> Option<FastMap<NodeType, FlowCentrality>> {
-        // targets = outputs
-        // sources = inputs
-
         let total_outputs: usize = outputs.values().sum();
         let total_inputs: usize = inputs.values().sum();
 
@@ -408,9 +413,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
         let mut centralities: FastMap<NodeType, FlowCentrality> = FastMap::default();
 
-        let partitions: Vec<Vec<NodeType>> = self.partition().collect();
-
-        for partition in partitions.iter().rev() {
+        for partition in self.partition_sorted() {
             let mut seen_inputs: usize = 0;
             let mut seen_outputs: usize = 0;
 
@@ -433,9 +436,9 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
                     seen_inputs += n_inputs;
                     seen_outputs += n_outputs;
 
-                    if *node == last {
+                    if node == last {
                         seen_counts.insert(
-                            *node,
+                            node,
                             SeenCount {
                                 inputs: seen_inputs,
                                 outputs: seen_outputs,
@@ -446,7 +449,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
 
                 let centripetal = seen_inputs * (total_outputs - seen_outputs);
                 let centrifugal = seen_outputs * (total_inputs - seen_inputs);
-                centralities.insert(*node, FlowCentrality::new(centrifugal, centripetal));
+                centralities.insert(node, FlowCentrality::new(centrifugal, centripetal));
             }
         }
 
@@ -501,10 +504,6 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
                 dist
             })
             .collect()
-    }
-
-    pub fn toposort(&self) -> Toposort<NodeType> {
-        Toposort::new(self)
     }
 
     pub fn dfs(&self, root: NodeType) -> DepthFirstSearch<NodeType> {
@@ -726,20 +725,28 @@ mod tests {
         assert_eq!(orders, expected);
     }
 
-    #[test]
-    fn partitions() {
-        let arbor = make_arbor();
-        let partitions: Vec<Vec<u64>> = arbor.partition().collect();
-        assert_eq!(partitions.len(), 2);
-        assert_eq!(partitions[0], vec![7, 6, 3, 2, 1]);
-        assert_eq!(partitions[1], vec![5, 4, 3]);
+    pub fn partitions_to_edges(partitions: &Vec<Vec<u64>>) -> FastMap<u64, u64> {
+        let mut edges: FastMap<u64, u64> = FastMap::default();
+        for partition in partitions.iter() {
+            for pair in partition.windows(2) {
+                let was_present = edges.insert(pair[0].clone(), pair[1].clone());
+                assert_eq!(was_present, None);
+            }
+        }
+        edges
+    }
+
+    pub fn assert_equivalent_partitions(test: &Vec<Vec<u64>>, reference: &Vec<Vec<u64>>) {
+        assert_eq!(partitions_to_edges(test), partitions_to_edges(reference));
     }
 
     #[test]
-    fn toposort() {
+    fn partitions() {
         let arbor = make_arbor();
-        let sorted: Vec<u64> = arbor.toposort().collect();
-        assert_eq!(sorted, vec![1, 2, 3, 6, 7, 4, 5]);
+        let test: Vec<Vec<u64>> = arbor.partition().collect();
+        let reference = vec![vec![5, 4, 3], vec![7, 6, 3, 2, 1]];
+
+        assert_equivalent_partitions(&test, &reference)
     }
 
     #[test]

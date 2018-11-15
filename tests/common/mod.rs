@@ -72,7 +72,6 @@ fn sort_vecs<T: PartialOrd + PartialEq + Clone + Debug>(
     let mut v2 = reference.clone();
     v2.sort_by(cmp);
 
-    assert_eq!(v1.len(), v2.len());
     (v1, v2)
 }
 
@@ -86,6 +85,9 @@ pub fn assert_vec_members<T: PartialOrd + PartialEq + Clone + Debug>(
 
 pub fn assert_vec_members_approx(test: &Vec<f64>, reference: &Vec<f64>, tol: f64) {
     let (v1, v2) = sort_vecs(test, reference);
+
+    println!("test: {:?}", v1);
+    println!("reference: {:?}", v2);
 
     for (test_val, ref_val) in v1.iter().zip(v2.iter()) {
         assert_abs_diff_eq!(test_val, ref_val, epsilon = tol);

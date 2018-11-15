@@ -74,13 +74,6 @@ fn bench_degrees(b: &mut Bencher) {
     b.iter(|| arbor.out_degrees())
 }
 
-fn bench_toposort(b: &mut Bencher) {
-    let arbor = read_arbor();
-    b.iter(|| {
-        let _v: Vec<_> = arbor.toposort().collect();
-    })
-}
-
 fn bench_dfs(b: &mut Bencher) {
     let arbor = read_arbor();
     b.iter(|| {
@@ -95,7 +88,6 @@ benchmark_group!(
     bench_partitions,
     bench_successors,
     bench_degrees,
-    bench_toposort,
     bench_dfs,
 );
 benchmark_main!(clone, noclone);

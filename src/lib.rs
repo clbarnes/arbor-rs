@@ -28,5 +28,6 @@ pub use synapse_clustering::SynapseClustering;
 mod algorithms;
 mod arbor_features;
 pub use arbor_features::BranchAndEndNodes;
-pub use arbor_features::Partitions;
+pub use arbor_features::PartitionsClassic;
+pub use arbor_features::PartitionsTopological;
 pub mod utils;
