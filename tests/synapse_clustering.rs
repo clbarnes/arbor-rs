@@ -16,11 +16,27 @@ use arbor::SynapseClustering;
 use common::{
     assert_equivalent_partitions, assert_keys, assert_vec_members, assert_vec_members_approx,
     mk_arbor, mk_arbor_parser, mk_synapse_clustering, partitions_to_edges, read_file, str_id,
-    val_id, FRACTION, TOLERANCE_ABS_NM,
+    val_id, FRACTION, LAMBDA, TOLERANCE_ABS_NM,
 };
 use serde_json::Value;
 use std::fmt::Debug;
 use std::hash::Hash;
+
+fn ref_synapse_clustering() -> SynapseClustering<u64, f64> {
+    let ref_json = read_file("results/synapse_clustering/synapse_clustering.result.json");
+    serde_json::from_str(&ref_json).expect("deser ref data")
+}
+
+#[test]
+#[ignore]
+fn instantiate() {
+    let mut sc = mk_synapse_clustering();
+    sc.synapse_distances();
+
+    let reference = ref_synapse_clustering();
+
+    assert_eq!(sc, reference);
+}
 
 // todo: all of these will fail as they depend on nodes_distance_to
 
@@ -44,7 +60,7 @@ fn distance_map() {
     }
 }
 
-fn dhm_to_clusters(dhm: FastMap<u64, usize>) -> FastMap<usize, FastSet<u64>> {
+fn dhm_to_clusters(dhm: &FastMap<u64, usize>) -> FastMap<usize, FastSet<u64>> {
     let mut out = FastMap::default();
 
     for (k, v) in dhm.iter() {
@@ -55,17 +71,21 @@ fn dhm_to_clusters(dhm: FastMap<u64, usize>) -> FastMap<usize, FastSet<u64>> {
     out
 }
 
+fn ref_dhm() -> FastMap<u64, usize> {
+    let ref_json = read_file("results/synapse_clustering/density_hill_map.result.json");
+    serde_json::from_str(&ref_json).expect("couldn't deser ref data")
+}
+
 #[test]
 #[ignore]
 fn density_hill_map() {
     // todo: sensitive to partition ordering; clusters is a better test
-    let test = mk_synapse_clustering().density_hill_map();
-    let ref_json = read_file("results/synapse_clustering/density_hill_map.result.json");
-    let reference: FastMap<u64, usize> =
-        serde_json::from_str(&ref_json).expect("couldn't deser ref data");
+    let test = ref_synapse_clustering().density_hill_map();
+    //    let test = mk_synapse_clustering().density_hill_map();
+    let reference = ref_dhm();
 
+    assert_equiv_clusters(&dhm_to_clusters(&test), &dhm_to_clusters(&reference));
     assert_eq!(test, reference);
-    assert_equiv_clusters(dhm_to_clusters(test), dhm_to_clusters(reference));
 }
 
 fn clusters_by_size(clus: FastMap<usize, FastSet<u64>>) -> FastMap<usize, Vec<FastSet<u64>>> {
@@ -81,8 +101,8 @@ fn clusters_by_size(clus: FastMap<usize, FastSet<u64>>) -> FastMap<usize, Vec<Fa
 
 /// Takes cluster_ID: Vec<NodeID> maps
 fn assert_equiv_clusters(
-    test: FastMap<usize, FastSet<u64>>,
-    reference: FastMap<usize, FastSet<u64>>,
+    test: &FastMap<usize, FastSet<u64>>,
+    reference: &FastMap<usize, FastSet<u64>>,
 ) {
     let mut test_lens: Vec<usize> = test.values().map(|v| v.len()).collect();
     test_lens.sort();
@@ -94,11 +114,10 @@ fn assert_equiv_clusters(
 }
 
 #[test]
-#[ignore]
 fn clusters() {
     // todo: sensitive to partition ordering
-    let mut syn_clus = mk_synapse_clustering();
-    let dhm = syn_clus.density_hill_map();
+    let mut syn_clus = ref_synapse_clustering();
+    let dhm = ref_dhm();
     let test = syn_clus.clusters(&dhm);
 
     let ref_json = read_file("results/synapse_clustering/clusters.result.json");
@@ -109,16 +128,15 @@ fn clusters() {
         .map(|(k, v)| (*k, v.iter().cloned().map(str_id).collect()))
         .collect();
 
-    assert_eq!(test, reference);
-    assert_equiv_clusters(test, reference);
+    assert_equiv_clusters(&test, &reference);
+    assert_eq!(&test, &reference);
 }
 
 #[test]
-#[ignore]
 fn segregation_index() {
     let ap = mk_arbor_parser();
-    let mut syn_clus = mk_synapse_clustering();
-    let dhm = syn_clus.density_hill_map();
+    let dhm = ref_dhm();
+    let syn_clus = ref_synapse_clustering();
     let clusters = syn_clus.clusters(&dhm);
 
     let test = SynapseClustering::segregation_index(&clusters, &ap.outputs, &ap.inputs);
@@ -126,12 +144,12 @@ fn segregation_index() {
     let ref_json = read_file("results/synapse_clustering/segregation_index.result.json");
     let reference: f64 = serde_json::from_str(&ref_json).expect("couldn't deser ref data");
 
-    assert_eq!(test, reference);
+    assert_abs_diff_eq!(test, reference, epsilon = 0.001);
 }
 
 #[test]
 #[ignore]
-fn arbor_regions() {
+fn find_axon() {
     let ap = mk_arbor_parser();
     let test = SynapseClustering::find_axon(&ap, FRACTION, &ap.positions).expect("should find");
 

@@ -76,7 +76,9 @@ pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float>
     arbor: Arbor<NodeType>,
     synapses: FastMap<NodeType, usize>,
     lambda: F,
+    #[serde(rename = "distancesToRoot")]
     distances_to_root: FastMap<NodeType, F>,
+    #[serde(rename = "Ds")]
     synapse_distances: Option<FastMap<NodeType, Vec<F>>>,
 }
 
@@ -893,21 +895,21 @@ mod tests {
             v.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap())
         }
 
-        println!("{:?}", test);
+        println!("test: {:?}", test);
 
         let reference: FastMap<u64, Vec<f64>> = vec![
-            (1, vec![2.0, 4.0, 5.0, 6.0]),
+            (1, vec![2.0, 4.0, 5.0]),
             (2, vec![1.0, 3.0, 4.0, 5.0]),
             (3, vec![0.0, 2.0, 3.0, 4.0]),
             (4, vec![1.0, 1.0, 4.0, 5.0]),
-            (5, vec![0.0, 2.0, 5.0, 6.0]),
+            (5, vec![0.0, 2.0, 5.0]),
             (6, vec![0.0, 1.0, 3.0, 5.0]),
-            (7, vec![0.0, 1.0, 4.0, 6.0]),
+            (7, vec![0.0, 1.0, 4.0]),
         ]
         .into_iter()
         .collect();
 
-        println!("{:?}", reference);
+        println!("ref: {:?}", reference);
 
         assert_keys(&test, &reference);
         for (key, test_val) in test.iter() {

@@ -2,6 +2,7 @@
 extern crate serde_derive;
 
 #[cfg(test)]
+#[macro_use]
 extern crate approx;
 #[cfg(test)]
 extern crate bencher;
