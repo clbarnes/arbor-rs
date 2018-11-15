@@ -64,11 +64,13 @@ fn sort_vecs<T: PartialOrd + PartialEq + Clone + Debug>(
     test: &Vec<T>,
     reference: &Vec<T>,
 ) -> (Vec<T>, Vec<T>) {
+    let cmp = |a: &T, b: &T| a.partial_cmp(b).unwrap();
+
     let mut v1 = test.clone();
-    v1.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v1.sort_by(cmp);
 
     let mut v2 = reference.clone();
-    v2.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v2.sort_by(cmp);
 
     assert_eq!(v1.len(), v2.len());
     (v1, v2)

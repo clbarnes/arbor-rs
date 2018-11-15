@@ -28,7 +28,7 @@ fn deserialize_compact_arbor() {
 #[test]
 #[ignore]
 fn deserialize_compact_skeleton() {
-    // todo: why is this failing?
+    // todo: fails because JS fails to recover same arbor too
     let response_str = read_file("compact-skeleton.json");
     let response_obj: SkeletonResponse =
         serde_json::from_str(&response_str).expect("It didn't work :(");

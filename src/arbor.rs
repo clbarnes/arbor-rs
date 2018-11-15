@@ -363,6 +363,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
         Partitions::new(self)
     }
 
+    /// Get partitions in order of length, smallest fist
     pub fn partition_sorted(&self) -> Vec<Vec<NodeType>> {
         let mut partitions: Vec<Vec<NodeType>> = self.partition().collect();
         partitions.sort_by(cmp_len);
