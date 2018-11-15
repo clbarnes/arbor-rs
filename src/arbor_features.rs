@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 
+use std::collections::VecDeque;
 use utils::{FastMap, FastSet};
 use Arbor;
 
@@ -87,6 +88,91 @@ impl<'a, NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for Partitions<'a, N
             }
             path
         })
+    }
+}
+
+struct PartitionsClassic<NodeType: Hash + Clone + Eq> {
+    partitions: VecDeque<Vec<NodeType>>,
+}
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> PartitionsClassic<NodeType> {
+    fn new(arbor: &Arbor<NodeType>) -> Self {
+        let branch_ends = arbor.find_branch_and_end_nodes();
+        let mut ends: Vec<NodeType> = branch_ends.ends.iter().cloned().collect();
+        ends.sort_unstable();
+
+        let branches = branch_ends.branches;
+        let mut partitions: VecDeque<Vec<NodeType>> = ends.iter().map(|e| vec![]).collect();
+
+        let mut next: usize = 0;
+        let mut junctions: FastMap<NodeType, Vec<Vec<NodeType>>> = FastMap::default();
+
+        let mut open: VecDeque<Vec<NodeType>> = ends.iter().map(|n| vec![*n]).collect();
+
+        while !open.is_empty() {
+            let mut seq = open.pop_front().unwrap();
+            let mut node = *seq.last().unwrap();
+
+            let mut parent: Option<NodeType> = None;
+            let mut n_successors: Option<usize> = None;
+
+            while n_successors.is_none() {
+                parent = arbor.edges.get(&node).map(|n| *n);
+                if let Some(p) = parent {
+                    seq.push(p);
+                    n_successors = branches.get(&p).map(|v| *v);
+                    node = p;
+                } else {
+                    break;
+                }
+            }
+
+            if parent.is_none() {
+                partitions[next] = seq.clone();
+                next += 1
+            } else {
+                let mut should_insert = true;
+                if let Some(junction) = junctions.get_mut(&node) {
+                    junction.push(seq.clone());
+                    if junction.len() == n_successors.unwrap() {
+                        let mut max: usize = 0;
+                        let mut ith: usize = 0;
+
+                        for k in 0..junction.len() {
+                            let len = junction[k].len();
+                            if len > max {
+                                max = len;
+                                ith = k;
+                            }
+                        }
+
+                        for k in 0..junction.len() {
+                            if k == ith {
+                                open.push_back(junction[k].clone());
+                            } else {
+                                partitions[next] = junction[k].clone();
+                                next += 1;
+                            }
+                        }
+                    }
+                    should_insert = false;
+                }
+
+                if should_insert {
+                    junctions.insert(node, vec![seq]);
+                }
+            }
+        }
+
+        Self { partitions }
+    }
+}
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> Iterator for PartitionsClassic<NodeType> {
+    type Item = Vec<NodeType>;
+
+    fn next(&mut self) -> Option<Vec<NodeType>> {
+        self.partitions.pop_front()
     }
 }
 

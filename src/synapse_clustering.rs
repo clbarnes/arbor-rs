@@ -408,8 +408,12 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
         density_hill_map.insert(*root, hill_ids.get());
 
-        for mut partition in self.arbor.partition() {
-            let first = partition.pop().expect("len >=2");
+        // todo: this is consistent with the JS but is a bad implementation
+        let mut partitions_sorted = self.arbor.partition_sorted();
+        partitions_sorted.reverse();
+
+        for mut partition in partitions_sorted {
+            let first = partition.pop().expect("len >=1");
 
             let mut density_hill_index =
                 *density_hill_map.get(&first).expect("first must be visited");
