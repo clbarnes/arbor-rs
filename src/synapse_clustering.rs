@@ -149,6 +149,8 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     /// Then do a DFS, updating the dict with {parent_id: [upstream_dists]},
     /// taking only distances from the parent's keys which are not this child.
     /// Then iterate over all nodes once more, collapsing the values of the dicts into a single array.
+    ///
+    /// Gives correct results for toy data but doesn't match JS
     fn _calculate_synapse_distances2(&self) -> FastMap<NodeType, Vec<f64>> {
         let mut ds_by_neighbour: FastMap<NodeType, FastMap<NodeType, Vec<f64>>> =
             FastMap::default();
@@ -237,7 +239,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             .collect()
     }
 
-    /// as per reference implementation
+    /// as per reference implementation, but this is wrong
     fn _calculate_synapse_distances(&self) -> FastMap<NodeType, Vec<f64>> {
         // treenode ID to list of distances to treenodes with synapses
         // Ds
@@ -535,7 +537,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             clusters
                 .iter()
                 .fold(Vec::default(), |mut accum, (cluster_id, nodes)| {
-                    let init = ClusterInfo {
+                    let mut init = ClusterInfo {
                         id: *cluster_id,
                         n_inputs: 0,
                         n_outputs: 0,
@@ -545,7 +547,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
                     let mut cluster_info = nodes.iter().fold(init, |mut c_info, node| {
                         c_info.n_outputs += outputs.get(node).unwrap_or(&0);
-                        c_info.n_inputs += outputs.get(node).unwrap_or(&0);
+                        c_info.n_inputs += inputs.get(node).unwrap_or(&0);
                         c_info
                     });
 
@@ -571,6 +573,8 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             n_inputs += cluster_info.n_inputs;
             S += cluster_info.n_synapses as f64 * cluster_info.entropy;
         }
+
+        S /= n_synapses as f64;
 
         if S == 0.0 {
             return 1.0;
@@ -789,6 +793,7 @@ fn subarbor_has_outputs<NodeType: Hash + Copy + Eq + Debug + Ord>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx;
     use arbor_parser::Response;
     use serde_json;
     use std::collections::HashSet;
@@ -799,6 +804,179 @@ mod tests {
 
     const LAMBDA: f64 = 2000.0;
     const FRACTION: f64 = 0.9;
+
+    //            1
+    //            |
+    //            2
+    //            |
+    // 13<-(101)<-3
+    //            | \
+    //            4  6<-(103)<-16
+    //            |   \
+    // 15<-(102)<-5    7<-(104)<-17
+
+    fn small_arbor() -> Arbor<u64> {
+        let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
+        let mut arbor = Arbor::default();
+        arbor.add_edges(&edges).expect("fail");
+        arbor
+    }
+
+    fn small_arborparser() -> ArborParser<u64, f64> {
+        let mut locations: FastMap<u64, Location<f64>> = FastMap::default();
+        for idx in 1..8 {
+            locations.insert(
+                idx as u64,
+                Location {
+                    x: idx as f64,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            );
+        }
+        let inputs: FastMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
+        let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
+
+        ArborParser {
+            arbor: small_arbor(),
+            positions: locations,
+            inputs,
+            outputs,
+        }
+    }
+
+    fn small_synapse_clustering() -> SynapseClustering<u64, f64> {
+        let ap = small_arborparser();
+        SynapseClustering::new(ap, 2.0)
+    }
+
+    fn sort_vecs<T: PartialOrd + PartialEq + Clone + Debug>(
+        test: &Vec<T>,
+        reference: &Vec<T>,
+    ) -> (Vec<T>, Vec<T>) {
+        let cmp = |a: &T, b: &T| a.partial_cmp(b).unwrap();
+
+        let mut v1 = test.clone();
+        v1.sort_by(cmp);
+
+        let mut v2 = reference.clone();
+        v2.sort_by(cmp);
+
+        assert_eq!(v1.len(), v2.len());
+        (v1, v2)
+    }
+
+    pub fn assert_vec_members_approx(test: &Vec<f64>, reference: &Vec<f64>, tol: f64) {
+        let (v1, v2) = sort_vecs(test, reference);
+
+        for (test_val, ref_val) in v1.iter().zip(v2.iter()) {
+            assert_abs_diff_eq!(test_val, ref_val, epsilon = tol);
+        }
+    }
+
+    pub fn assert_keys<T: Hash + Eq + Debug + Clone, U>(
+        test: &FastMap<T, U>,
+        reference: &FastMap<T, U>,
+    ) {
+        let m1: FastSet<T> = test.keys().cloned().collect();
+        let m2: FastSet<T> = reference.keys().cloned().collect();
+
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn distances() {
+        let mut sc = small_synapse_clustering();
+        let mut test = sc.synapse_distances().clone();
+
+        for v in test.values_mut() {
+            v.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap())
+        }
+
+        println!("{:?}", test);
+
+        let reference: FastMap<u64, Vec<f64>> = vec![
+            (1, vec![2.0, 4.0, 5.0, 6.0]),
+            (2, vec![1.0, 3.0, 4.0, 5.0]),
+            (3, vec![0.0, 2.0, 3.0, 4.0]),
+            (4, vec![1.0, 1.0, 4.0, 5.0]),
+            (5, vec![0.0, 2.0, 5.0, 6.0]),
+            (6, vec![0.0, 1.0, 3.0, 5.0]),
+            (7, vec![0.0, 1.0, 4.0, 6.0]),
+        ]
+        .into_iter()
+        .collect();
+
+        println!("{:?}", reference);
+
+        assert_keys(&test, &reference);
+        for (key, test_val) in test.iter() {
+            assert_vec_members_approx(test_val, &reference[key], 0.1)
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn density_hill_map() {
+        let mut sc = small_synapse_clustering();
+        let test = sc.density_hill_map();
+
+        println!("test: {:?}", test);
+
+        // skips an ID?!
+        let reference: FastMap<u64, usize> =
+            vec![(1, 0), (2, 4), (3, 4), (4, 3), (5, 1), (6, 4), (7, 4)]
+                .into_iter()
+                .collect();
+
+        println!("reference: {:?}", reference);
+
+        assert_eq!(test, reference);
+    }
+
+    fn entropy(p: f64) -> Option<f64> {
+        // todo: make generic
+        if p <= 0.0 || p >= 1.0 {
+            return None;
+        }
+
+        let p_i = 1.0 - p;
+
+        Some(-(p * p.ln() + p_i * p_i.ln()))
+    }
+
+    #[test]
+    fn test_entropy() {
+        let in_out = vec![(0.1, 0.3251), (0.2, 0.5004), (0.99, 0.0560), (0.5, 0.6931)];
+
+        for (in_val, out) in in_out.iter() {
+            let test = entropy(*in_val).unwrap();
+            assert_abs_diff_eq!(test, out, epsilon = 0.001)
+        }
+    }
+
+    #[test]
+    fn segregation_index() {
+        let ap = small_arborparser();
+        let mut sc = small_synapse_clustering();
+
+        // js result
+        let clusters: FastMap<usize, FastSet<u64>> = vec![
+            (0, vec![1].into_iter().collect()),
+            (1, vec![5].into_iter().collect()),
+            (3, vec![4].into_iter().collect()),
+            (4, vec![2, 3, 6, 7].into_iter().collect()),
+        ]
+        .into_iter()
+        .collect();
+
+        let test = SynapseClustering::segregation_index(&clusters, &ap.outputs, &ap.inputs);
+        println!("test: {:?}", test);
+        let reference = 0.311278;
+        println!("reference: {:?}", reference);
+
+        assert_abs_diff_eq!(test, reference, epsilon = 0.001);
+    }
 
     fn read_file(fname: &str) -> String {
         let mut f = File::open(to_path(fname)).expect("file not found");
