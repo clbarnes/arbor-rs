@@ -13,7 +13,7 @@ matrix:
   fast_finish: true
 
 before_install:
-  - rustup component add rustfmt-preview --toolchain nightly
+  - rustup component add rustfmt-preview
   - rustup component add clippy-preview
   - nvm install node
 install: cargo build --verbose
@@ -24,7 +24,7 @@ before_script:
 script:
   - cargo test --no-fail-fast --verbose
   - cargo test --no-fail-fast --verbose -- --ignored
-  - cargo +nightly fmt --all -- --check
+  - cargo fmt --all -- --check
 after_success:
   - cargo clippy
   - cargo bench
