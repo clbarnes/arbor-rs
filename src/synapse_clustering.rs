@@ -5,6 +5,7 @@ use std::iter;
 use std::iter::repeat;
 use std::usize;
 
+use arbor_features::PartitionsTopological;
 use std::collections::VecDeque;
 use std::iter::repeat_with;
 use std::iter::Chain;
@@ -96,7 +97,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     /// Gives correct results for toy data but doesn't match JS
     fn _calculate_synapse_distances2(&self) -> FastMap<NodeType, Vec<f64>> {
         let mut ds_by_neighbour: FastMap<NodeType, FastMap<NodeType, Vec<f64>>> =
-            FastMap::default();
+            FastMap::default(); // capacity?
 
         // populate ds_by_neighbour with {self_id: [0]*n_synapses}
         for node in self.arbor.nodes() {
@@ -111,7 +112,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         }
 
         // root-containing first
-        let partitions: Vec<Vec<NodeType>> = self.arbor.partition().collect();
+        let partitions: Vec<Vec<NodeType>> = PartitionsTopological::new(&self.arbor).collect();
 
         let max_distance = self.lambda * 3.0;
 
@@ -121,8 +122,12 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             let mut node_iter = partition.iter();
             let mut distal = node_iter.next().unwrap();
 
+            let mut distal_distance = self.distances_to_root[distal];
+            let mut proximal_distance: f64;
+
             for proximal in node_iter {
-                let dist_between = self.edge_length(distal, proximal).unwrap();
+                proximal_distance = self.distances_to_root[proximal];
+                let dist_between = distal_distance - proximal_distance;
 
                 // add edge length to all downstream partner's distances, flatten
                 let ds: Vec<f64> = ds_by_neighbour
@@ -140,6 +145,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                     .insert(*distal, ds);
 
                 distal = proximal;
+                distal_distance = proximal_distance;
             }
         }
 
@@ -149,8 +155,14 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             let mut node_iter = partition.iter().rev();
             let mut proximal = node_iter.next().unwrap();
 
+            let mut proximal_distance = self.distances_to_root[proximal];
+            let mut distal_distance: f64;
+
             for distal in node_iter {
-                let dist_between = self.edge_length(distal, proximal).unwrap();
+                let distal_distance = self.distances_to_root[distal];
+
+                // todo: stop using edge_length, more lookups than necessary
+                let dist_between = distal_distance - proximal_distance;
 
                 // add edge length to all upstream partner's distances
                 // other than those coming from this node, flatten
@@ -173,9 +185,11 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                     .insert(*proximal, ds);
 
                 proximal = distal;
+                proximal_distance = distal_distance;
             }
         }
 
+        // could probably fold this into the above loop
         ds_by_neighbour
             .into_iter()
             .map(|(k, vals)| (k, vals.values().flatten().cloned().collect()))
