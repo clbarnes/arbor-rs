@@ -41,41 +41,6 @@ pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float>
     synapse_distances: Option<FastMap<NodeType, Vec<F>>>,
 }
 
-/// The synapse density of a given node is a function of how close it is to arbor synapses
-fn synapse_density<NodeType: Hash + Copy + Debug + Eq>(
-    synapse_distances: &FastMap<NodeType, Vec<f64>>,
-    lambda: &f64,
-) -> FastMap<NodeType, f64> {
-    let lambda_sq = lambda.powi(2);
-
-    synapse_distances
-        .iter()
-        .map(|(treenode_id, distances)| {
-            let val = distances.iter().fold(0.0, |sum, d| {
-                let exponent = -(d.powi(2) / lambda_sq);
-                sum + exponent.exp()
-            });
-            (*treenode_id, val)
-        })
-        .collect()
-}
-
-fn chain_values<T: Hash + Eq, U: Copy>(map: &FastMap<T, Vec<U>>) -> Vec<U> {
-    map.values().cloned().flatten().collect()
-}
-
-fn chain_values_except<T: Hash + Eq, U: Copy + PartialEq>(
-    map: &FastMap<T, Vec<U>>,
-    except: &T,
-) -> Vec<U> {
-    map.iter()
-        .filter(|(k, v)| k != &except)
-        .map(|(k, v)| v)
-        .cloned()
-        .flatten()
-        .collect()
-}
-
 impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> {
     pub fn new(ap: ArborParser<NodeType, f64>, lambda: f64) -> Self {
         Self {
@@ -85,6 +50,21 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             distances_to_root: ap.distances_to_root().distances,
             synapse_distances: None,
         }
+    }
+
+    fn synapse_density(&mut self) -> FastMap<NodeType, f64> {
+        let lambda_sq = self.lambda.powi(2);
+
+        self.synapse_distances()
+            .iter()
+            .map(|(treenode_id, distances)| {
+                let val = distances.iter().fold(0.0, |sum, d| {
+                    let exponent = -(d.powi(2) / lambda_sq);
+                    sum + exponent.exp()
+                });
+                (*treenode_id, val)
+            })
+            .collect()
     }
 
     fn edge_length(&self, node1: &NodeType, node2: &NodeType) -> Option<f64> {
@@ -364,7 +344,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
         let mut density_hill_map: FastMap<NodeType, HillId> = FastMap::default();
         let lambda = self.lambda;
-        let density: FastMap<NodeType, f64> = synapse_density(self.synapse_distances(), &lambda);
+        let density: FastMap<NodeType, f64> = self.synapse_density();
 
         let mut hill_ids: RangeFrom<HillId> = 0..;
 
@@ -888,6 +868,30 @@ mod tests {
         assert_keys(&test, &reference);
         for (key, test_val) in test.iter() {
             assert_vec_members_approx(test_val, &reference[key], 0.1)
+        }
+    }
+
+    #[test]
+    fn test_density() {
+        // depends on distances
+        let mut sc = small_synapse_clustering();
+        let test = sc.synapse_density();
+
+        let reference: FastMap<u64, f64> = vec![
+            (1, 0.39279538492474364),
+            (2, 0.9096266327427832),
+            (3, 1.4983859612367931),
+            (4, 1.5825827929018166),
+            (5, 1.3737379508316314),
+            (6, 1.890569198649671),
+            (7, 1.7999280542819984),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_keys(&test, &reference);
+        for (key, test_val) in test.iter() {
+            assert_abs_diff_eq!(test_val, &reference[key], epsilon = 0.001);
         }
     }
 
