@@ -52,6 +52,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         }
     }
 
+    /// Get each treenode's synapse density (based on how far it is from synapses)
     fn synapse_density(&mut self) -> FastMap<NodeType, f64> {
         let lambda_sq = self.lambda.powi(2);
 
@@ -343,7 +344,6 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         type HillId = usize;
 
         let mut density_hill_map: FastMap<NodeType, HillId> = FastMap::default();
-        let lambda = self.lambda;
         let density: FastMap<NodeType, f64> = self.synapse_density();
 
         let mut hill_ids: RangeFrom<HillId> = 0..;
@@ -352,93 +352,110 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         let edges = &self.arbor.edges;
         let root = &self.arbor.root.expect("unrooted arbor");
 
+        // root belongs to hill 0, by definition
         density_hill_map.insert(*root, hill_ids.next().unwrap());
 
+        // iterate partitions longest to shortest to approximate a depth-first search
+        // todo: is this necessarily true? can branches be skipped in this sorting?
         let mut partitions = self.arbor.partition_sorted();
         partitions.reverse();
 
         for mut partition in partitions {
             let first = partition.pop().expect("len >=1");
 
+            // either the root or a pre-visited node
             let mut density_hill_index =
                 *density_hill_map.get(&first).expect("first must be visited");
+            // children adjacent to branch nodes will already have a hill
             if let Some(idx) = density_hill_map.get(partition.last().expect("len >=2")) {
                 density_hill_index = *idx;
             }
 
-            while !partition.is_empty() {
-                let treenode_id = partition.pop().expect("just checked");
+            while let Some(treenode_id) = partition.pop() {
+                // either parent's hill, or whatever was pre-seeded by branch processing
                 density_hill_map.insert(treenode_id, density_hill_index);
 
                 let neighbors = all_neighbours
                     .get_mut(&treenode_id)
                     .expect("all nodes have neighbours");
                 if neighbors.len() <= 1 {
+                    // leaf nodes need no further processing
                     continue;
                 }
-                neighbors.sort_unstable();
+                neighbors.sort_unstable(); // for determinism
 
                 let self_density = density.get(&treenode_id).expect("everything has density");
 
-                let (n_over_zero, delta_density) = neighbors.iter().fold(
-                    (0 as usize, Vec::default()),
-                    |(mut n, mut deltas), neighbor| {
-                        let d = density.get(neighbor).expect("defined for all") - self_density;
-                        if d > 0.0 {
-                            n += 1;
-                        }
-                        deltas.push((*neighbor, d));
-                        (n, deltas)
-                    },
-                );
+                // do not use a map, to keep order consistent (no lookups are required)
+                let mut delta_density: Vec<(NodeType, f64)> = Vec::with_capacity(neighbors.len());
+                // number of neighbours with greater density than current
+                let mut n_over_zero: usize = 0;
+
+                for neighbor in neighbors.into_iter() {
+                    let d = density.get(neighbor).expect("defined for all") - self_density;
+                    if d > 0.0 {
+                        n_over_zero += 1;
+                    }
+                    delta_density.push((*neighbor, d));
+                }
 
                 if n_over_zero <= 1 {
+                    // fewer than 2 neighbours have a greater density, i.e. we're not in a valley
                     continue;
                 }
+
+                // neighbours with >= density start a new hill
+                // neighbours with < density are on the same hill
 
                 let parent = edges.get(&treenode_id).expect("can't be root");
                 for (neighbor, dens_delta) in delta_density.iter() {
                     if parent == neighbor || dens_delta < &0.0 {
+                        // skip parent (already assigned) and neighbours on same hill
                         continue;
                     }
+                    // assign new hill to others
                     density_hill_map.insert(*neighbor, hill_ids.next().unwrap());
                 }
 
-                let distance_to_current = self
-                    .distances_to_root
-                    .get(&treenode_id)
-                    .expect("all have distances");
-                let mut steepest_id: Option<NodeType> = None;
-                let mut max = f64::min_value();
+                // given that this node is in a valley,
+                // which of its neighbours' hills should it belong to?
+
+                let distance_to_current = self.distances_to_root[&treenode_id];
 
                 let get_incline = |neighbor: &NodeType, dens: &f64| -> f64 {
                     dens / (self.distances_to_root[neighbor] - distance_to_current).abs()
                 };
 
-                let mut delta_density_iter = delta_density.iter();
+                // neighbours downhill from current
+                let mut negative_dens: Vec<NodeType> = Vec::with_capacity(delta_density.len());
+
+                // find neighbor up the steepest slope (large delta change, small edge length)
+                let mut delta_density_iter = delta_density.into_iter();
                 let (neighbor, dens) = delta_density_iter.next().expect(">=2 elements");
                 let mut steepest_neighbor = neighbor;
-                let mut steepest_incline = get_incline(neighbor, dens);
-                let mut negative_dens = Vec::with_capacity(delta_density.len());
+                let mut steepest_incline = get_incline(&neighbor, &dens);
 
                 for (neighbor, dens) in delta_density_iter {
-                    if dens < &0.0 {
-                        negative_dens.push(*neighbor);
-                    }
-                    let incline = get_incline(neighbor, dens);
+                    let incline = get_incline(&neighbor, &dens);
                     if incline > steepest_incline {
                         steepest_incline = incline;
                         steepest_neighbor = neighbor;
                     }
+                    if dens < 0.0 {
+                        negative_dens.push(neighbor);
+                    }
                 }
 
-                let steepest_hill = density_hill_map[steepest_neighbor];
+                // this node, and all nodes downhill of it,
+                // belong to the hill of the neighbour up the steepest slope
+                let steepest_hill = density_hill_map[&steepest_neighbor];
                 density_hill_map.insert(treenode_id, steepest_hill);
 
                 for neighbor in negative_dens {
                     density_hill_map.insert(neighbor, steepest_hill);
                 }
 
+                // this node's hill, to be assigned to the next child
                 density_hill_index =
                     density_hill_map[partition.last().expect("already continued if an end node")];
             }
@@ -953,7 +970,7 @@ mod tests {
         let test = SynapseClustering::segregation_index(&clusters, &ap.outputs, &ap.inputs);
         println!("test: {:?}", test);
         let reference = 0.311278;
-        println!("reference: {:?}", reference);
+        println!(" ref: {:?}", reference);
 
         assert_abs_diff_eq!(test, reference, epsilon = 0.001);
     }
