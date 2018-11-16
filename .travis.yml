@@ -22,8 +22,8 @@ before_script:
   - cd resources/test/arbor-harness && npm install && npm start
   - cd $TRAVIS_BUILD_DIR
 script:
-  - cargo test --verbose
-  - cargo test --verbose -- --ignored
+  - cargo test --no-fail-fast --verbose
+  - cargo test --no-fail-fast --verbose -- --ignored
   - cargo +nightly fmt --all -- --check
 after_success:
   - cargo clippy
