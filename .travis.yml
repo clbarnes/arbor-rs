@@ -14,7 +14,7 @@ matrix:
 
 before_install:
   - rustup component add rustfmt-preview
-  - rustup component add clippy-preview
+  - rustup component add clippy-preview --toolchain nightly
   - nvm install node
 install: cargo build --verbose
 before_script:
@@ -24,7 +24,7 @@ before_script:
 script:
   - cargo test --verbose
   - cargo test --verbose -- --ignored
-  - cargo fmt --all -- --check
+  - cargo +nightly fmt --all -- --check
 after_success:
   - cargo clippy
   - cargo bench
