@@ -29,6 +29,7 @@ fn ref_synapse_clustering() -> SynapseClustering<u64, f64> {
 
 #[test]
 #[ignore]
+/// fails due to synapse_distances implementation
 fn instantiate() {
     let mut sc = mk_synapse_clustering();
     sc.synapse_distances();
@@ -42,6 +43,7 @@ fn instantiate() {
 
 #[test]
 #[ignore]
+/// fails due to synapse_distances implementation
 fn distance_map() {
     let mut syn_clus = mk_synapse_clustering();
     let test = syn_clus.synapse_distances().clone();
@@ -78,6 +80,7 @@ fn ref_dhm() -> FastMap<u64, usize> {
 
 #[test]
 #[ignore]
+/// fails due to density_hill_map implementation
 fn density_hill_map() {
     // todo: sensitive to partition ordering; clusters is a better test
     let test = ref_synapse_clustering().density_hill_map();
@@ -149,6 +152,7 @@ fn segregation_index() {
 
 #[test]
 #[ignore]
+/// cannot be tested due to reference axon serialisation
 fn find_axon() {
     let ap = mk_arbor_parser();
     let test = SynapseClustering::find_axon(&ap, FRACTION, &ap.positions).expect("should find");

@@ -914,6 +914,7 @@ mod tests {
 
     #[test]
     #[ignore]
+    /// fails due to density_hill_map implementation
     fn density_hill_map() {
         let mut sc = small_synapse_clustering();
         let test = sc.density_hill_map();

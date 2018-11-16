@@ -26,7 +26,6 @@ fn deserialize_compact_arbor() {
 }
 
 #[test]
-#[ignore]
 fn deserialize_compact_skeleton() {
     // todo: fails because JS fails to recover same arbor too
     let response_str = read_file("compact-skeleton.json");
@@ -35,7 +34,7 @@ fn deserialize_compact_skeleton() {
     let parsed_ap =
         ArborParser::new(Response::Skeleton(response_obj)).expect("response was invalid");
 
-    let json = read_file("results/arbor_parser/from_compact-arbor.result.json");
+    let json = read_file("results/arbor_parser/from_compact-skeleton.result.json");
     let expected_ap: ArborParser<u64, f64> =
         serde_json::from_str(&json).expect("couldn't deser ref");
 
