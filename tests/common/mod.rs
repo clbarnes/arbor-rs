@@ -21,7 +21,7 @@ pub const TOLERANCE_ABS_NM: f64 = 1.0;
 
 fn skeleton_root() -> PathBuf {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    d.push("resources/test/arbor-harness/data");
+    d.push("resources/test/");
     d.push(TEST_SKELETON.to_string());
     d
 }

@@ -16,16 +16,20 @@ before_install:
   - rustup component add rustfmt-preview
   - rustup component add clippy-preview
   - nvm install node
+
 install: cargo build --verbose
-before_script:
-  - git submodule update --init --recursive
-  - cd resources/test/arbor-harness && npm install && npm start
-  - cd $TRAVIS_BUILD_DIR
+
+before_script:  # get test data
+  - npm install -g arbor-harness
+  - arbor-harness impl
+  - arbor-harness data -d ./resources/test/3034133
+  - arbor-harness results bench -d ./resources/test/3034133 -o ./resources/test/3034133/results
+
 script:
   - cargo test --no-fail-fast --verbose
   - cargo test --no-fail-fast --verbose -- --ignored
   - cargo fmt --all -- --check
+
 after_success:
   - cargo clippy
   - cargo bench
-

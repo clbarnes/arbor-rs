@@ -8,13 +8,19 @@ and associated tools.
 
 ## Testing
 
-Integration tests depend on arbor-harness, a git submodule which downloads the reference implementation, 
+Integration tests depend on arbor-harness, an npm package which downloads the reference implementation, 
 runs and benchmarks it, and dumps the output to JSON.
 This requires node.js (ideally v11+), and can be populated thus:
 
 ```bash
-git submodules --init --recursive
-cd resources/test/arbor-harness
-npm install
-npm start
+npm install -g arbor-harness
+# populate CATMAID's implementation
+arbor-harness impl
+# download test data
+arbor-harness data -d ./resources/test/3034133
+# run and benchmark reference implementation
+arbor-harness results bench -d ./resources/test/3034133 -o ./resources/test/3034133/results
+
 ```
+
+Run
