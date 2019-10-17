@@ -1,10 +1,16 @@
 use num::Float;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::iter;
 use std::iter::repeat;
 use std::usize;
 
+use arbor_features::PartitionsTopological;
 use std::collections::VecDeque;
+use std::iter::repeat_with;
+use std::iter::Chain;
+use std::iter::Flatten;
+use std::ops::RangeFrom;
 use utils::ArborRegions;
 use utils::Axon;
 use utils::FastMap;
@@ -25,73 +31,15 @@ fn entropy(p: f64) -> Option<f64> {
     Some(-(p * p.ln() + p_i * p_i.ln()))
 }
 
-struct IdGen {
-    pub current: Option<usize>,
-    next: usize,
-}
-
-impl IdGen {
-    fn new(first: usize) -> Self {
-        IdGen {
-            current: None,
-            next: first,
-        }
-    }
-}
-
-impl Default for IdGen {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
-
-impl Iterator for IdGen {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<usize> {
-        if self.current == Some(usize::MAX) {
-            None
-        } else {
-            self.current = Some(self.next);
-            self.next += 1;
-            self.current
-        }
-    }
-}
-
-trait InfiniteIterator<T>: Iterator<Item = T> {
-    fn get(&mut self) -> T {
-        self.next().expect("ran out of numbers")
-    }
-}
-
-impl InfiniteIterator<usize> for IdGen {}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct SynapseClustering<NodeType: Hash + Copy + Eq + Debug + Ord, F: Float> {
     arbor: Arbor<NodeType>,
     synapses: FastMap<NodeType, usize>,
     lambda: F,
+    #[serde(rename = "distancesToRoot")]
     distances_to_root: FastMap<NodeType, F>,
+    #[serde(rename = "Ds")]
     synapse_distances: Option<FastMap<NodeType, Vec<F>>>,
-}
-
-fn density<NodeType: Hash + Copy + Debug + Eq>(
-    synapse_distances: &FastMap<NodeType, Vec<f64>>,
-    lambda: &f64,
-) -> FastMap<NodeType, f64> {
-    let lambda_sq = lambda.powi(2);
-
-    synapse_distances
-        .iter()
-        .map(|(treenode_id, distances)| {
-            let val = distances.iter().fold(0.0, |sum, d| {
-                let exponent = -d.powi(2) / lambda_sq;
-                sum + exponent.exp()
-            });
-            (*treenode_id, val)
-        })
-        .collect()
 }
 
 impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> {
@@ -105,21 +53,169 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         }
     }
 
+    /// Get each treenode's synapse density (based on how far it is from synapses)
+    fn synapse_density(&mut self) -> FastMap<NodeType, f64> {
+        let lambda_sq = self.lambda.powi(2);
+
+        self.synapse_distances()
+            .iter()
+            .map(|(treenode_id, distances)| {
+                let val = distances.iter().fold(0.0, |sum, d| {
+                    let exponent = -(d.powi(2) / lambda_sq);
+                    sum + exponent.exp()
+                });
+                (*treenode_id, val)
+            })
+            .collect()
+    }
+
+    fn edge_length(&self, node1: &NodeType, node2: &NodeType) -> Option<f64> {
+        if node1 == node2 {
+            return Some(0.0);
+        }
+
+        // check adjacent
+        let adj = match self.arbor.get_parent(*node1) {
+            Some(n) => n == node2,
+            None => false,
+        } || match self.arbor.get_parent(*node2) {
+            Some(n) => n == node1,
+            None => false,
+        };
+
+        match adj {
+            true => Some((self.distances_to_root[node1] - self.distances_to_root[node2]).abs()),
+            false => None,
+        }
+    }
+
+    /// Traverse partitions towards the root, populating each one with a dict of {child_id: [downstream_dists]}.
+    /// Then do a DFS, updating the dict with {parent_id: [upstream_dists]},
+    /// taking only distances from the parent's keys which are not this child.
+    /// Then iterate over all nodes once more, collapsing the values of the dicts into a single array.
+    ///
+    /// Gives correct results for toy data but doesn't match JS
+    fn _calculate_synapse_distances2(&self) -> FastMap<NodeType, Vec<f64>> {
+        let mut ds_by_neighbour: FastMap<NodeType, FastMap<NodeType, Vec<f64>>> =
+            FastMap::default(); // capacity?
+
+        // populate ds_by_neighbour with {self_id: [0]*n_synapses}
+        for node in self.arbor.nodes() {
+            let mut to_insert = FastMap::default();
+            if let Some(n_synapses) = self.synapses.get(node) {
+                if n_synapses > &0 {
+                    let dists = repeat(0.0).take(*n_synapses).collect();
+                    to_insert.insert(*node, dists);
+                }
+            }
+            ds_by_neighbour.insert(*node, to_insert);
+        }
+
+        // root-containing first
+        let partitions: Vec<Vec<NodeType>> = PartitionsTopological::new(&self.arbor).collect();
+
+        let max_distance = self.lambda * 3.0;
+
+        // partitions which stop at the first unseen branch (or root)
+        for partition in partitions.iter().rev() {
+            // end -> root
+            let mut node_iter = partition.iter();
+            let mut distal = node_iter.next().unwrap();
+
+            let mut distal_distance = self.distances_to_root[distal];
+            let mut proximal_distance: f64;
+
+            for proximal in node_iter {
+                proximal_distance = self.distances_to_root[proximal];
+                let dist_between = distal_distance - proximal_distance;
+
+                // add edge length to all downstream partner's distances, flatten
+                let ds: Vec<f64> = ds_by_neighbour
+                    .get(distal)
+                    .unwrap()
+                    .values()
+                    .flatten()
+                    .map(|i| i + dist_between)
+                    .filter(|i| i < &max_distance)
+                    .collect();
+
+                ds_by_neighbour
+                    .get_mut(proximal)
+                    .unwrap()
+                    .insert(*distal, ds);
+
+                distal = proximal;
+                distal_distance = proximal_distance;
+            }
+        }
+
+        // partitions which stop at the first seen branch (or root)
+        for partition in partitions.iter() {
+            // root -> end
+            let mut node_iter = partition.iter().rev();
+            let mut proximal = node_iter.next().unwrap();
+
+            let mut proximal_distance = self.distances_to_root[proximal];
+            let mut distal_distance: f64;
+
+            for distal in node_iter {
+                let distal_distance = self.distances_to_root[distal];
+
+                // todo: stop using edge_length, more lookups than necessary
+                let dist_between = distal_distance - proximal_distance;
+
+                // add edge length to all upstream partner's distances
+                // other than those coming from this node, flatten
+                let mut ds: Vec<f64> = ds_by_neighbour
+                    .get(proximal)
+                    .unwrap()
+                    .iter()
+                    .filter_map(|(k, v)| match k == distal {
+                        true => None,
+                        false => Some(v),
+                    })
+                    .flatten()
+                    .map(|i| i + dist_between)
+                    .filter(|i| i < &max_distance)
+                    .collect();
+
+                ds_by_neighbour
+                    .get_mut(distal)
+                    .unwrap()
+                    .insert(*proximal, ds);
+
+                proximal = distal;
+                proximal_distance = distal_distance;
+            }
+        }
+
+        // could probably fold this into the above loop
+        ds_by_neighbour
+            .into_iter()
+            .map(|(k, vals)| (k, vals.values().flatten().cloned().collect()))
+            .collect()
+    }
+
+    /// as per reference implementation, but this is wrong
     fn _calculate_synapse_distances(&self) -> FastMap<NodeType, Vec<f64>> {
         // treenode ID to list of distances to treenodes with synapses
         // Ds
         let mut synapse_distances: FastMap<NodeType, Vec<f64>> = FastMap::default();
 
         // branch node to list of upstream treenode IDs
+        // entries get removed once the branch treenode has been visited as part of a partition
+        // where it is not the last treenode of the partition
         let mut seen_downstream_nodes: FastMap<NodeType, Vec<NodeType>> = FastMap::default();
 
+        // don't include synapses further away than this
         let max_distance = self.lambda * 3.0;
 
-        // todo: check partition ordering
-        for partition in self.arbor.partition() {
+        for partition in self.arbor.partition_sorted().iter() {
+            // treenodes downstream of the current treenode,
+            // in the current partition and in all partitions merging into a seen node
             let mut downstream_nodes: Vec<NodeType> = Vec::default();
-            let mut partition_it = partition.iter();
 
+            let mut partition_it = partition.iter();
             let mut prev_treenode_id = partition_it.next().expect("partitions should not be empty");
 
             for treenode_id in partition_it {
@@ -127,18 +223,19 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
                 let n_synapses = self.synapses.get(prev_treenode_id).unwrap_or(&0);
 
-                if !synapse_distances.contains_key(prev_treenode_id) {
-                    synapse_distances.insert(*prev_treenode_id, Vec::default());
-                }
+                synapse_distances
+                    .entry(*prev_treenode_id)
+                    .or_insert(Vec::default());
 
                 if n_synapses > &0 {
                     let d = self.distances_to_root[prev_treenode_id];
 
-                    for child_id in downstream_nodes.iter().cloned() {
-                        let ds = synapse_distances.get_mut(&child_id).expect("should exist?");
-                        let distance_child_to_synapse = self.distances_to_root[&child_id] - d;
+                    for child_id in downstream_nodes.iter() {
+                        let distance_child_to_synapse = self.distances_to_root[child_id] - d;
 
                         if distance_child_to_synapse <= max_distance {
+                            let ds = synapse_distances.get_mut(child_id).expect("should exist?");
+
                             for v in repeat(distance_child_to_synapse).take(*n_synapses) {
                                 ds.push(v)
                             }
@@ -146,29 +243,25 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                     }
                 }
 
-                let distance_to_root = self
-                    .distances_to_root
-                    .get(treenode_id)
-                    .expect("should exist");
-                let distance_prev_to_current = self
-                    .distances_to_root
-                    .get(prev_treenode_id)
-                    .expect("should exist")
-                    - distance_to_root;
+                // if treenode_id is a branch, append all its children to downstream nodes
+                // if it is a branch, we have already seen it: therefore it is in seen_downstream_nodes
 
+                let distance_to_root = self.distances_to_root[treenode_id];
+                let distance_prev_to_current =
+                    self.distances_to_root[prev_treenode_id] - distance_to_root;
+
+                // remove seen_downstream so it's not processed again
                 if let Some(seen) = seen_downstream_nodes.remove(treenode_id) {
-                    let current_ds = synapse_distances
-                        .get(treenode_id)
-                        .expect("should exist if seen does")
-                        .clone();
+                    let current_ds = synapse_distances.get(treenode_id).unwrap().clone();
 
                     for child_id in downstream_nodes.iter().cloned() {
-                        let mut child_ds =
-                            synapse_distances.get_mut(&child_id).expect("should exist");
                         let distance = self.distances_to_root.get(&child_id).expect("should exist")
                             - distance_to_root;
 
                         if distance <= max_distance {
+                            let mut child_ds =
+                                synapse_distances.get_mut(&child_id).expect("should exist");
+
                             for current_d in current_ds.iter().cloned() {
                                 child_ds.push(current_d + distance);
                             }
@@ -181,26 +274,31 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                         .clone();
 
                     for child_id in seen {
-                        let mut child_ds =
-                            synapse_distances.get_mut(&child_id).expect("should exist");
                         let distance = self.distances_to_root.get(&child_id).expect("should exist")
                             - distance_to_root;
 
                         if distance <= max_distance {
+                            let mut child_ds =
+                                synapse_distances.get_mut(&child_id).expect("should exist");
+
                             for prev_d in prev_ds.iter().cloned() {
                                 child_ds.push(prev_d + distance);
                             }
                         }
 
+                        // update list of children
                         downstream_nodes.push(child_id);
                     }
                 }
+
+                // assign synapse distances to the current node
 
                 let mut translated_prev_ds: Vec<f64> = Vec::default();
 
                 for prev_d in synapse_distances
                     .get(prev_treenode_id)
                     .expect("assigned earlier")
+                    .iter()
                 {
                     let distance = prev_d + distance_prev_to_current;
                     if distance < max_distance {
@@ -213,25 +311,27 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                     .or_insert(Vec::default());
                 current_ds.append(&mut translated_prev_ds);
 
+                // reset for next iteration
                 prev_treenode_id = treenode_id;
             }
 
+            // finished traversing the partition
             let last_treenode_id = partition.last().expect("partitions should not be empty");
             seen_downstream_nodes.insert(*last_treenode_id, downstream_nodes);
         }
 
+        // update the last node: the root
         if let Some(n_synapses_at_root) = self
             .synapses
             .get(&self.arbor.root.expect("arbor should be rooted"))
         {
             if n_synapses_at_root > &0 {
                 for (treenode_id, ds) in synapse_distances.iter_mut() {
-                    let distance = self
-                        .distances_to_root
-                        .get(treenode_id)
-                        .expect("all tns have a distance");
-                    if *distance < max_distance {
-                        ds.push(*distance);
+                    let distance = self.distances_to_root[treenode_id];
+                    if distance < max_distance {
+                        for d in repeat(distance).take(*n_synapses_at_root) {
+                            ds.push(d);
+                        }
                     }
                 }
             }
@@ -243,105 +343,135 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     /// Compute a map from treenodes to an array of cable distances to all arbor synapses
     pub fn synapse_distances(&mut self) -> &FastMap<NodeType, Vec<f64>> {
         if self.synapse_distances.is_none() {
-            self.synapse_distances = Some(self._calculate_synapse_distances());
+            self.synapse_distances = Some(self._calculate_synapse_distances2());
         }
 
         self.synapse_distances.as_ref().expect("just checked")
     }
 
-    /// Return a map of treenodes to cluster index, based on the distance map
     pub fn density_hill_map(&mut self) -> FastMap<NodeType, usize> {
-        let mut density_hill_map = FastMap::default();
-        let lambda = self.lambda;
-        let density: FastMap<NodeType, f64> = density(self.synapse_distances(), &lambda);
+        self._density_hill_map_classic()
+    }
 
-        let mut hill_ids = IdGen::default();
+    /// Return a map of treenodes to cluster index, based on the distance map
+    fn _density_hill_map_classic(&mut self) -> FastMap<NodeType, usize> {
+        type HillId = usize;
 
-        let all_neighbours = self.arbor.all_neighbours();
+        let mut density_hill_map: FastMap<NodeType, HillId> = FastMap::default();
+        let density: FastMap<NodeType, f64> = self.synapse_density();
+
+        let mut hill_ids: RangeFrom<HillId> = 0..;
+
+        let mut all_neighbours = self.arbor.all_neighbours();
         let edges = &self.arbor.edges;
         let root = &self.arbor.root.expect("unrooted arbor");
 
-        density_hill_map.insert(*root, hill_ids.get());
+        // root belongs to hill 0, by definition
+        density_hill_map.insert(*root, hill_ids.next().unwrap());
 
-        for mut partition in self.arbor.partition() {
-            let first = partition.pop().expect("len >=2");
+        // iterate partitions longest to shortest to approximate a depth-first search
+        // todo: is this necessarily true? can branches be skipped in this sorting?
+        let mut partitions = self.arbor.partition_sorted();
+        partitions.reverse();
 
+        for mut partition in partitions {
+            let first = partition.pop().expect("len >=1");
+
+            // either the root or a pre-visited node
             let mut density_hill_index =
                 *density_hill_map.get(&first).expect("first must be visited");
+            // children adjacent to branch nodes will already have a hill
             if let Some(idx) = density_hill_map.get(partition.last().expect("len >=2")) {
                 density_hill_index = *idx;
             }
 
-            while !partition.is_empty() {
-                let treenode_id = partition.pop().expect("just checked");
+            while let Some(treenode_id) = partition.pop() {
+                // either parent's hill, or whatever was pre-seeded by branch processing
                 density_hill_map.insert(treenode_id, density_hill_index);
 
                 let neighbors = all_neighbours
-                    .get(&treenode_id)
+                    .get_mut(&treenode_id)
                     .expect("all nodes have neighbours");
                 if neighbors.len() <= 1 {
+                    // leaf nodes need no further processing
                     continue;
                 }
+                neighbors.sort_unstable(); // for determinism
 
                 let self_density = density.get(&treenode_id).expect("everything has density");
 
-                let (n_over_zero, delta_density) = neighbors.iter().fold(
-                    (0 as usize, FastMap::default()),
-                    |(mut n, mut deltas), neighbor| {
-                        let d = density.get(neighbor).expect("defined for all") - self_density;
-                        if d > 0.0 {
-                            n += 1;
-                        }
-                        deltas.insert(*neighbor, d);
-                        (n, deltas)
-                    },
-                );
+                // do not use a map, to keep order consistent (no lookups are required)
+                let mut delta_density: Vec<(NodeType, f64)> = Vec::with_capacity(neighbors.len());
+                // number of neighbours with greater density than current
+                let mut n_over_zero: usize = 0;
+
+                for neighbor in neighbors.into_iter() {
+                    let d = density.get(neighbor).expect("defined for all") - self_density;
+                    if d > 0.0 {
+                        n_over_zero += 1;
+                    }
+                    delta_density.push((*neighbor, d));
+                }
 
                 if n_over_zero <= 1 {
+                    // fewer than 2 neighbours have a greater density, i.e. we're not in a valley
                     continue;
                 }
 
+                // neighbours with >= density start a new hill
+                // neighbours with < density are on the same hill
+
                 let parent = edges.get(&treenode_id).expect("can't be root");
-                for (neighbor, dens) in delta_density.iter() {
-                    if parent == neighbor || dens < &0.0 {
+                for (neighbor, dens_delta) in delta_density.iter() {
+                    if parent == neighbor || dens_delta < &0.0 {
+                        // skip parent (already assigned) and neighbours on same hill
                         continue;
                     }
-                    density_hill_map.insert(*neighbor, hill_ids.get());
+                    // assign new hill to others
+                    density_hill_map.insert(*neighbor, hill_ids.next().unwrap());
                 }
 
-                let distance_to_current = self
-                    .distances_to_root
-                    .get(&treenode_id)
-                    .expect("all have distances");
-                let mut steepest_id: Option<NodeType> = None;
-                let mut max = f64::min_value();
+                // given that this node is in a valley,
+                // which of its neighbours' hills should it belong to?
 
-                for (neighbor, dens) in delta_density.iter() {
-                    let dist_to_neighbor =
-                        (self.distances_to_root.get(neighbor).expect("all defined")
-                            - distance_to_current)
-                            .abs();
-                    let local_max = dens / dist_to_neighbor;
-                    if local_max > max {
-                        max = local_max;
-                        steepest_id = Some(*neighbor);
+                let distance_to_current = self.distances_to_root[&treenode_id];
+
+                let get_incline = |neighbor: &NodeType, dens: &f64| -> f64 {
+                    dens / (self.distances_to_root[neighbor] - distance_to_current).abs()
+                };
+
+                // neighbours downhill from current
+                let mut negative_dens: Vec<NodeType> = Vec::with_capacity(delta_density.len());
+
+                // find neighbor up the steepest slope (large delta change, small edge length)
+                let mut delta_density_iter = delta_density.into_iter();
+                let (neighbor, dens) = delta_density_iter.next().expect(">=2 elements");
+                let mut steepest_neighbor = neighbor;
+                let mut steepest_incline = get_incline(&neighbor, &dens);
+
+                for (neighbor, dens) in delta_density_iter {
+                    let incline = get_incline(&neighbor, &dens);
+                    if incline > steepest_incline {
+                        steepest_incline = incline;
+                        steepest_neighbor = neighbor;
+                    }
+                    if dens < 0.0 {
+                        negative_dens.push(neighbor);
                     }
                 }
 
-                let steepest = *density_hill_map
-                    .get(&steepest_id.expect("must have been found"))
-                    .expect("everyone's got one");
-                density_hill_map.insert(treenode_id, steepest);
+                // this node, and all nodes downhill of it,
+                // belong to the hill of the neighbour up the steepest slope
+                let steepest_hill = density_hill_map[&steepest_neighbor];
+                density_hill_map.insert(treenode_id, steepest_hill);
 
-                for (neighbor, dens) in delta_density.iter() {
-                    if dens < &0.0 {
-                        density_hill_map.insert(*neighbor, steepest);
-                    }
+                for neighbor in negative_dens {
+                    density_hill_map.insert(neighbor, steepest_hill);
                 }
 
-                density_hill_index = *density_hill_map
-                    .get(partition.last().expect("already continued if an end node"))
-                    .expect("must be visited");
+                // this node's hill, to be assigned to the next child
+                density_hill_index =
+                    density_hill_map[partition.last().expect("already continued if an end node")];
             }
         }
 
@@ -353,10 +483,10 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
         &self,
         density_hill_map: &FastMap<NodeType, usize>,
     ) -> FastMap<usize, FastSet<NodeType>> {
-        let mut clusters = FastMap::new();
+        let mut clusters = FastMap::default();
 
         for (node, cluster) in density_hill_map.iter() {
-            let entry = clusters.entry(*cluster).or_insert(FastSet::new());
+            let entry = clusters.entry(*cluster).or_insert(FastSet::default());
             entry.insert(*node);
         }
 
@@ -365,7 +495,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
     /// Return a map of cluster ID to number of treenodes in the cluster
     fn cluster_sizes(&self, density_hill_map: &FastMap<NodeType, usize>) -> FastMap<usize, usize> {
-        let mut sizes = FastMap::new();
+        let mut sizes = FastMap::default();
 
         for (node, cluster) in density_hill_map.iter() {
             let entry = sizes.entry(*cluster).or_insert(0);
@@ -394,7 +524,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             clusters
                 .iter()
                 .fold(Vec::default(), |mut accum, (cluster_id, nodes)| {
-                    let init = ClusterInfo {
+                    let mut init = ClusterInfo {
                         id: *cluster_id,
                         n_inputs: 0,
                         n_outputs: 0,
@@ -404,7 +534,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
                     let mut cluster_info = nodes.iter().fold(init, |mut c_info, node| {
                         c_info.n_outputs += outputs.get(node).unwrap_or(&0);
-                        c_info.n_inputs += outputs.get(node).unwrap_or(&0);
+                        c_info.n_inputs += inputs.get(node).unwrap_or(&0);
                         c_info
                     });
 
@@ -430,6 +560,8 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             n_inputs += cluster_info.n_inputs;
             S += cluster_info.n_synapses as f64 * cluster_info.entropy;
         }
+
+        S /= n_synapses as f64;
 
         if S == 0.0 {
             return 1.0;
@@ -648,6 +780,7 @@ fn subarbor_has_outputs<NodeType: Hash + Copy + Eq + Debug + Ord>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx;
     use arbor_parser::Response;
     use serde_json;
     use std::collections::HashSet;
@@ -658,6 +791,204 @@ mod tests {
 
     const LAMBDA: f64 = 2000.0;
     const FRACTION: f64 = 0.9;
+
+    //            1
+    //            |
+    //            2
+    //            |
+    // 13<-(101)<-3
+    //            | \
+    //            4  6<-(103)<-16
+    //            |   \
+    // 15<-(102)<-5    7<-(104)<-17
+
+    fn small_arbor() -> Arbor<u64> {
+        let edges: Vec<u64> = vec![5, 4, 4, 3, 3, 2, 2, 1, 7, 6, 6, 3];
+        let mut arbor = Arbor::default();
+        arbor.add_edges(&edges).expect("fail");
+        arbor
+    }
+
+    fn small_arborparser() -> ArborParser<u64, f64> {
+        let mut locations: FastMap<u64, Location<f64>> = FastMap::default();
+        for idx in 1..8 {
+            locations.insert(
+                idx as u64,
+                Location {
+                    x: idx as f64,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            );
+        }
+        let inputs: FastMap<u64, usize> = vec![(6, 1), (7, 1)].into_iter().collect();
+        let outputs: FastMap<u64, usize> = vec![(3, 1), (5, 1)].into_iter().collect();
+
+        ArborParser {
+            arbor: small_arbor(),
+            positions: locations,
+            inputs,
+            outputs,
+        }
+    }
+
+    fn small_synapse_clustering() -> SynapseClustering<u64, f64> {
+        let ap = small_arborparser();
+        SynapseClustering::new(ap, 2.01)
+    }
+
+    fn sort_vecs<T: PartialOrd + PartialEq + Clone + Debug>(
+        test: &Vec<T>,
+        reference: &Vec<T>,
+    ) -> (Vec<T>, Vec<T>) {
+        let cmp = |a: &T, b: &T| a.partial_cmp(b).unwrap();
+
+        let mut v1 = test.clone();
+        v1.sort_by(cmp);
+
+        let mut v2 = reference.clone();
+        v2.sort_by(cmp);
+
+        assert_eq!(v1.len(), v2.len());
+        (v1, v2)
+    }
+
+    pub fn assert_vec_members_approx(test: &Vec<f64>, reference: &Vec<f64>, tol: f64) {
+        let (v1, v2) = sort_vecs(test, reference);
+
+        for (test_val, ref_val) in v1.iter().zip(v2.iter()) {
+            assert_abs_diff_eq!(test_val, ref_val, epsilon = tol);
+        }
+    }
+
+    pub fn assert_keys<T: Hash + Eq + Debug + Clone, U>(
+        test: &FastMap<T, U>,
+        reference: &FastMap<T, U>,
+    ) {
+        let m1: FastSet<T> = test.keys().cloned().collect();
+        let m2: FastSet<T> = reference.keys().cloned().collect();
+
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn distances() {
+        let mut sc = small_synapse_clustering();
+        let mut test = sc.synapse_distances().clone();
+
+        for v in test.values_mut() {
+            v.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap())
+        }
+
+        println!("test: {:?}", test);
+
+        let reference: FastMap<u64, Vec<f64>> = vec![
+            (1, vec![2.0, 4.0, 5.0, 6.0]),
+            (2, vec![1.0, 3.0, 4.0, 5.0]),
+            (3, vec![0.0, 2.0, 3.0, 4.0]),
+            (4, vec![1.0, 1.0, 4.0, 5.0]),
+            (5, vec![0.0, 2.0, 5.0, 6.0]),
+            (6, vec![0.0, 1.0, 3.0, 5.0]),
+            (7, vec![0.0, 1.0, 4.0, 6.0]),
+        ]
+        .into_iter()
+        .collect();
+
+        println!("ref: {:?}", reference);
+
+        assert_keys(&test, &reference);
+        for (key, test_val) in test.iter() {
+            assert_vec_members_approx(test_val, &reference[key], 0.1)
+        }
+    }
+
+    #[test]
+    fn test_density() {
+        // depends on distances
+        let mut sc = small_synapse_clustering();
+        let test = sc.synapse_density();
+
+        let reference: FastMap<u64, f64> = vec![
+            (1, 0.39279538492474364),
+            (2, 0.9096266327427832),
+            (3, 1.4983859612367931),
+            (4, 1.5825827929018166),
+            (5, 1.3737379508316314),
+            (6, 1.890569198649671),
+            (7, 1.7999280542819984),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_keys(&test, &reference);
+        for (key, test_val) in test.iter() {
+            assert_abs_diff_eq!(test_val, &reference[key], epsilon = 0.001);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    /// fails due to density_hill_map implementation
+    fn density_hill_map() {
+        let mut sc = small_synapse_clustering();
+        let test = sc.density_hill_map();
+
+        println!("test: {:?}", test);
+
+        // skips an ID?!
+        let reference: FastMap<u64, usize> =
+            vec![(1, 0), (2, 4), (3, 4), (4, 3), (5, 1), (6, 4), (7, 4)]
+                .into_iter()
+                .collect();
+
+        println!(" ref: {:?}", reference);
+
+        assert_eq!(test, reference);
+    }
+
+    fn entropy(p: f64) -> Option<f64> {
+        // todo: make generic
+        if p <= 0.0 || p >= 1.0 {
+            return None;
+        }
+
+        let p_i = 1.0 - p;
+
+        Some(-(p * p.ln() + p_i * p_i.ln()))
+    }
+
+    #[test]
+    fn test_entropy() {
+        let in_out = vec![(0.1, 0.3251), (0.2, 0.5004), (0.99, 0.0560), (0.5, 0.6931)];
+
+        for (in_val, out) in in_out.iter() {
+            let test = entropy(*in_val).unwrap();
+            assert_abs_diff_eq!(test, out, epsilon = 0.001)
+        }
+    }
+
+    #[test]
+    fn segregation_index() {
+        let ap = small_arborparser();
+        let mut sc = small_synapse_clustering();
+
+        // js result
+        let clusters: FastMap<usize, FastSet<u64>> = vec![
+            (0, vec![1].into_iter().collect()),
+            (1, vec![5].into_iter().collect()),
+            (3, vec![4].into_iter().collect()),
+            (4, vec![2, 3, 6, 7].into_iter().collect()),
+        ]
+        .into_iter()
+        .collect();
+
+        let test = SynapseClustering::segregation_index(&clusters, &ap.outputs, &ap.inputs);
+        println!("test: {:?}", test);
+        let reference = 0.311278;
+        println!(" ref: {:?}", reference);
+
+        assert_abs_diff_eq!(test, reference, epsilon = 0.001);
+    }
 
     fn read_file(fname: &str) -> String {
         let mut f = File::open(to_path(fname)).expect("file not found");
@@ -688,7 +1019,6 @@ mod tests {
 
     #[test]
     fn can_get_distances() {
-        // todo: check actual results
         let mut sc = make_synapse_clustering();
         let dists = sc.synapse_distances().clone();
         let dist_keys: HashSet<u64> = dists.keys().cloned().collect();
@@ -702,7 +1032,6 @@ mod tests {
 
     #[test]
     fn can_get_density_hill_map() {
-        // todo: check actual results
         let mut sc = make_synapse_clustering();
         let dhm = sc.density_hill_map().clone();
         let dhm_keys: HashSet<u64> = dhm.keys().cloned().collect();
@@ -732,7 +1061,7 @@ mod tests {
     #[test]
     fn can_find_axon() {
         let ap = make_arborparser();
-        let locations = ap.locations.clone();
+        let locations = ap.positions.clone();
         SynapseClustering::find_axon(&ap, FRACTION, &locations);
     }
 }
