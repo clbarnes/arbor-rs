@@ -132,7 +132,7 @@ fn partition() {
 #[test]
 fn partition_sorted() {
     let arbor = mk_arbor();
-    let test: Vec<Vec<u64>> = arbor.partition().collect();
+    let test: Vec<Vec<u64>> = arbor.partition_sorted();
 
     let ref_json = read_file("results/arbor/partition_sorted.result.json");
     let ref_str: Vec<Vec<Value>> =
@@ -143,7 +143,9 @@ fn partition_sorted() {
         .map(|v| v.iter().cloned().map(val_id).collect())
         .collect();
 
-    assert_equivalent_partitions(test, reference);
+    assert_eq!(test, reference);
+
+    //    assert_equivalent_partitions(test, reference);
 
     // todo: check order?
 }

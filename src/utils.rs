@@ -24,18 +24,6 @@ pub type FastKeys<'a, T, U> = Keys<'a, T, U>;
 /// Cryptographically insecure set, generally for <NodeType>
 pub type FastSet<T> = FxHashSet<T>;
 
-pub fn cmp_len<T>(a: &Vec<T>, b: &Vec<T>) -> Ordering {
-    let a_len = a.len();
-    let b_len = b.len();
-    if a_len < b_len {
-        Ordering::Less
-    } else if a_len > b_len {
-        Ordering::Greater
-    } else {
-        Ordering::Equal
-    }
-}
-
 #[derive(Deserialize, Debug, Copy, Clone, PartialEq)]
 pub struct Location<F: Float> {
     pub x: F,
@@ -149,5 +137,36 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Axon<NodeType> {
             fc_max_plateau: regions.plateau,
             fc_zeros: regions.zeros,
         }
+    }
+}
+
+pub struct EdgeGradients<NodeType: Hash + Debug + Eq + Copy + Ord> {
+    pub disto_proximal: FastMap<(NodeType, NodeType), f64>,
+}
+
+impl<NodeType: Hash + Debug + Eq + Copy + Ord> EdgeGradients<NodeType> {
+    pub fn new(
+        edge_lengths: FastMap<(NodeType, NodeType), f64>,
+        synapse_densities: FastMap<NodeType, f64>,
+    ) -> Self {
+        Self {
+            disto_proximal: edge_lengths
+                .iter()
+                .map(|((distal, proximal), length)| {
+                    (
+                        (*distal, *proximal),
+                        (synapse_densities[distal] - synapse_densities[proximal]) / length,
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// If node1 is uphill of node2, the gradient will be +ve
+    pub fn get(&self, node1: &NodeType, node2: &NodeType) -> Option<f64> {
+        self.disto_proximal
+            .get(&(*node1, *node2))
+            .map(|v| *v)
+            .or(self.disto_proximal.get(&(*node2, *node1)).map(|v| -*v))
     }
 }

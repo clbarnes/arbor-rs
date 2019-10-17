@@ -26,6 +26,7 @@ fn deserialize_compact_arbor() {
 }
 
 #[test]
+#[ignore]
 fn deserialize_compact_skeleton() {
     // todo: fails because JS fails to recover same arbor too
     let response_str = read_file("compact-skeleton.json");
@@ -48,4 +49,6 @@ fn create_synapse_map() {
     let ref_json = read_file("results/arbor_parser/create_synapse_map.result.json");
     let reference: FastMap<u64, usize> =
         serde_json::from_str(&ref_json).expect("couldn't deser ref");
+
+    assert_eq!(test, reference);
 }

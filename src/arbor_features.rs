@@ -120,18 +120,18 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> PartitionsClassic<NodeType> {
         while !open.is_empty() {
             // partition to be grown
             let mut seq = open.pop_front().unwrap();
-            let mut last_node = *seq.last().unwrap();
+            let mut proximal_node = *seq.last().unwrap();
 
             let mut parent: Option<NodeType> = None;
             let mut n_successors: Option<usize> = None;
 
             // grow seq toward root until it reaches the root or a branch point
             while n_successors.is_none() {
-                parent = arbor.edges.get(&last_node).map(|n| *n);
+                parent = arbor.edges.get(&proximal_node).map(|n| *n);
                 if let Some(p) = parent {
                     seq.push(p);
                     n_successors = branches.get(&p).map(|v| *v);
-                    last_node = p;
+                    proximal_node = p;
                 } else {
                     break;
                 }
@@ -143,7 +143,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> PartitionsClassic<NodeType> {
             } else {
                 // reached a branch
 
-                let mut junction = junctions.get_mut(&last_node).expect("pre-populated");
+                let mut junction = junctions.get_mut(&proximal_node).expect("pre-populated");
                 junction.push(seq);
 
                 if junction.len() < n_successors.unwrap() {

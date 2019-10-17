@@ -502,17 +502,18 @@ impl<NodeType: Hash + Debug + Eq + Ord + Copy, F: Float> ArborParser<NodeType, F
                 .expect("just checked")
                 .skip(1)
             {
-                let terminate = next == root || match branches.get_mut(&next) {
-                    Some(count) => {
-                        if *count >= 2 {
-                            *count -= 1;
-                            true
-                        } else {
-                            false
+                let terminate = next == root
+                    || match branches.get_mut(&next) {
+                        Some(count) => {
+                            if *count >= 2 {
+                                *count -= 1;
+                                true
+                            } else {
+                                false
+                            }
                         }
-                    }
-                    None => false,
-                };
+                        None => false,
+                    };
 
                 if terminate {
                     *self.inputs.entry(next).or_insert(0) += inputs;

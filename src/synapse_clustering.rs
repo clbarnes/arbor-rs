@@ -6,17 +6,19 @@ use std::iter::repeat;
 use std::usize;
 
 use arbor_features::PartitionsTopological;
+use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::iter::repeat_with;
 use std::iter::Chain;
 use std::iter::Flatten;
 use std::ops::RangeFrom;
-use utils::ArborRegions;
 use utils::Axon;
 use utils::FastMap;
 use utils::FastSet;
 use utils::FlowCentrality;
 use utils::Location;
+use utils::{ArborRegions, EdgeGradients};
 use Arbor;
 use ArborParser;
 
@@ -93,8 +95,6 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
     /// Then do a DFS, updating the dict with {parent_id: [upstream_dists]},
     /// taking only distances from the parent's keys which are not this child.
     /// Then iterate over all nodes once more, collapsing the values of the dicts into a single array.
-    ///
-    /// Gives correct results for toy data but doesn't match JS
     fn _calculate_synapse_distances2(&self) -> FastMap<NodeType, Vec<f64>> {
         let mut ds_by_neighbour: FastMap<NodeType, FastMap<NodeType, Vec<f64>>> =
             FastMap::default(); // capacity?
@@ -118,7 +118,7 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
         // partitions which stop at the first unseen branch (or root)
         for partition in partitions.iter().rev() {
-            // end -> root
+            // leaf -> root
             let mut node_iter = partition.iter();
             let mut distal = node_iter.next().unwrap();
 
@@ -149,9 +149,9 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             }
         }
 
-        // partitions which stop at the first seen branch (or root)
+        // partitions which end at a seen branch (or root), to be reversed: DFS
         for partition in partitions.iter() {
-            // root -> end
+            // root -> leaf
             let mut node_iter = partition.iter().rev();
             let mut proximal = node_iter.next().unwrap();
 
@@ -161,7 +161,6 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
             for distal in node_iter {
                 let distal_distance = self.distances_to_root[distal];
 
-                // todo: stop using edge_length, more lookups than necessary
                 let dist_between = distal_distance - proximal_distance;
 
                 // add edge length to all upstream partner's distances
@@ -351,6 +350,84 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
 
     pub fn density_hill_map(&mut self) -> FastMap<NodeType, usize> {
         self._density_hill_map_classic()
+    }
+
+    fn _edge_gradients(&mut self, density: &FastMap<NodeType, f64>) -> EdgeGradients<NodeType> {
+        EdgeGradients {
+            disto_proximal: self
+                .arbor
+                .edges
+                .iter()
+                .map(|(distal, proximal)| {
+                    let length = self.distances_to_root[distal] - self.distances_to_root[proximal];
+                    let density_diff = density[distal] - density[proximal];
+                    ((*distal, *proximal), density_diff / length)
+                })
+                .collect(),
+        }
+    }
+
+    /// Address nodes in synapse-density order.
+    /// Each node gets the hill ID of its steepest-uphill neighbour;
+    /// new hill IDs are assigned to peaks in order of their height.
+    ///
+    /// Does not handle plateaus yet.
+    fn _density_hill_map2(&mut self) -> FastMap<NodeType, usize> {
+        type HillId = usize;
+        let mut last_hill: HillId = 0;
+        let mut hill_map: FastMap<NodeType, HillId> = FastMap::default();
+
+        let density = self.synapse_density();
+        let mut edge_gradients = self._edge_gradients(&density);
+        let mut all_neighbours = self.arbor.all_neighbours();
+
+        let mut density_ordered: Vec<NodeType> = density.keys().cloned().collect();
+        density_ordered.sort_by(|n1, n2| {
+            density[n1]
+                .partial_cmp(&density[n2])
+                .unwrap_or(Ordering::Equal)
+                .reverse()
+        });
+
+        for node in density_ordered.into_iter() {
+            if hill_map.contains_key(&node) {
+                continue;
+            }
+
+            let mut uphills: Vec<(NodeType, f64)> = vec![];
+            let mut levels: Vec<(NodeType, f64)> = vec![];
+            let mut downhills: Vec<(NodeType, f64)> = vec![];
+
+            for other in all_neighbours[&node].iter() {
+                let grad = edge_gradients.get(other, &node).unwrap();
+                if grad > 0.0 {
+                    uphills.push((*other, grad))
+                } else if grad < 0.0 {
+                    downhills.push((*other, grad))
+                } else {
+                    levels.push((*other, grad))
+                }
+            }
+
+            if uphills.len() == 0 && levels.len() == 0 {
+                hill_map.insert(node, last_hill);
+                last_hill += 1;
+            } else {
+                let best = uphills
+                    .into_iter()
+                    .max_by(|(n1, grad1), (n2, grad2)| {
+                        grad1.partial_cmp(grad2).unwrap_or(Ordering::Equal)
+                    })
+                    .unwrap();
+
+                let best_hill = hill_map[&best.0];
+                hill_map.insert(node, best_hill);
+            }
+        }
+
+        // todo: handle nodes on same level
+
+        hill_map
     }
 
     /// Return a map of treenodes to cluster index, based on the distance map
@@ -738,7 +815,8 @@ impl<NodeType: Hash + Copy + Eq + Debug + Ord> SynapseClustering<NodeType, f64> 
                     || (match arbor.get_parent(node) {
                         Some(n) => !above.contains(n),
                         None => false,
-                    }) {
+                    })
+                {
                     continue;
                 }
 
@@ -783,7 +861,7 @@ mod tests {
     use approx;
     use arbor_parser::Response;
     use serde_json;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
     use std::fs::File;
     use std::io::Read;
     use std::path::PathBuf;
@@ -926,22 +1004,28 @@ mod tests {
         }
     }
 
+    fn print_map<V: Debug + Copy>(map: &FastMap<u64, V>) {
+        let btree: BTreeMap<u64, V> = map.iter().map(|(k, v)| (*k, *v)).collect();
+        println!("{:?}", btree);
+    }
+
     #[test]
-    #[ignore]
+    //    #[ignore]
     /// fails due to density_hill_map implementation
     fn density_hill_map() {
         let mut sc = small_synapse_clustering();
         let test = sc.density_hill_map();
 
-        println!("test: {:?}", test);
+        println!("test:");
+        print_map(&test);
 
-        // skips an ID?!
         let reference: FastMap<u64, usize> =
             vec![(1, 0), (2, 4), (3, 4), (4, 3), (5, 1), (6, 4), (7, 4)]
                 .into_iter()
                 .collect();
 
-        println!(" ref: {:?}", reference);
+        println!("ref:");
+        print_map(&reference);
 
         assert_eq!(test, reference);
     }

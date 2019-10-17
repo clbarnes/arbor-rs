@@ -1,6 +1,6 @@
 use algorithms::DepthFirstSearch; //, Toposort};
 use arbor_features::{BranchAndEndNodes, PartitionsClassic, PartitionsTopological, RootwardPath};
-use utils::{cmp_len, FastKeys, FastMap, FastSet, FlowCentrality, Location, NodesDistanceTo};
+use utils::{FastKeys, FastMap, FastSet, FlowCentrality, Location, NodesDistanceTo};
 
 use num::traits::float::Float;
 use num::Zero;
@@ -378,7 +378,7 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     /// Get partitions in order of length, smallest fist
     pub fn partition_sorted(&self) -> Vec<Vec<NodeType>> {
         let mut partitions: Vec<Vec<NodeType>> = self.partition().collect();
-        partitions.sort_by(cmp_len);
+        partitions.sort_by_key(|v| v.len());
         partitions
     }
 
@@ -457,10 +457,11 @@ impl<NodeType: Hash + Debug + Eq + Copy + Ord> Arbor<NodeType> {
     }
 
     pub fn has_node(&self, node: NodeType) -> bool {
-        self.edges.contains_key(&node) || match self.root {
-            Some(n) => n == node,
-            None => false,
-        }
+        self.edges.contains_key(&node)
+            || match self.root {
+                Some(n) => n == node,
+                None => false,
+            }
     }
 
     /// Iterate over nodes

@@ -27,23 +27,19 @@ fn ref_synapse_clustering() -> SynapseClustering<u64, f64> {
     serde_json::from_str(&ref_json).expect("deser ref data")
 }
 
-#[test]
-#[ignore]
-/// fails due to synapse_distances implementation
-fn instantiate() {
-    let mut sc = mk_synapse_clustering();
-    sc.synapse_distances();
-
-    let reference = ref_synapse_clustering();
-
-    assert_eq!(sc, reference);
-}
-
-// todo: all of these will fail as they depend on nodes_distance_to
+///// would fail due to synapse distance ordering
+//#[test]
+//#[ignore]
+//fn instantiate() {
+//    let mut sc = mk_synapse_clustering();
+//    sc.synapse_distances();
+//
+//    let reference = ref_synapse_clustering();
+//
+//    assert_eq!(sc, reference);
+//}
 
 #[test]
-#[ignore]
-/// fails due to synapse_distances implementation
 fn distance_map() {
     let mut syn_clus = mk_synapse_clustering();
     let test = syn_clus.synapse_distances().clone();
@@ -78,18 +74,17 @@ fn ref_dhm() -> FastMap<u64, usize> {
     serde_json::from_str(&ref_json).expect("couldn't deser ref data")
 }
 
-#[test]
-#[ignore]
-/// fails due to density_hill_map implementation
-fn density_hill_map() {
-    // todo: sensitive to partition ordering; clusters is a better test
-    let test = ref_synapse_clustering().density_hill_map();
-    //    let test = mk_synapse_clustering().density_hill_map();
-    let reference = ref_dhm();
-
-    assert_equiv_clusters(&dhm_to_clusters(&test), &dhm_to_clusters(&reference));
-    assert_eq!(test, reference);
-}
+///// would fail due to partition ordering
+//#[test]
+//#[ignore]
+//fn density_hill_map() {
+//    let test = ref_synapse_clustering().density_hill_map();
+//    //    let test = mk_synapse_clustering().density_hill_map();
+//    let reference = ref_dhm();
+//
+//    assert_equiv_clusters(&dhm_to_clusters(&test), &dhm_to_clusters(&reference));
+//    assert_eq!(test, reference);
+//}
 
 fn clusters_by_size(clus: FastMap<usize, FastSet<u64>>) -> FastMap<usize, Vec<FastSet<u64>>> {
     clus.values().fold(FastMap::default(), |mut accum, v| {
@@ -102,23 +97,61 @@ fn clusters_by_size(clus: FastMap<usize, FastSet<u64>>) -> FastMap<usize, Vec<Fa
     })
 }
 
-/// Takes cluster_ID: Vec<NodeID> maps
+fn sort_clusters(map: &FastMap<usize, FastSet<u64>>) -> Vec<FastSet<u64>> {
+    let mut out: Vec<FastSet<u64>> = map.values().cloned().collect();
+    out.sort_by_key(|set| set.iter().cloned().min());
+    out
+}
+
+fn sorted_set_differences(test: &FastSet<u64>, reference: &FastSet<u64>) -> (Vec<u64>, Vec<u64>) {
+    let empty: Vec<u64> = Vec::default();
+
+    let mut test_minus_ref: Vec<u64> = test.difference(reference).cloned().collect();
+    test_minus_ref.sort();
+    let mut ref_minus_test: Vec<u64> = reference.difference(test).cloned().collect();
+    ref_minus_test.sort();
+    (test_minus_ref, ref_minus_test)
+}
+
+/// Takes Map<cluster_ID, Set<NodeID>>
 fn assert_equiv_clusters(
     test: &FastMap<usize, FastSet<u64>>,
     reference: &FastMap<usize, FastSet<u64>>,
 ) {
-    let mut test_lens: Vec<usize> = test.values().map(|v| v.len()).collect();
-    test_lens.sort();
-    let mut ref_lens: Vec<usize> = reference.values().map(|v| v.len()).collect();
-    ref_lens.sort();
-    assert_eq!(test_lens, ref_lens);
+    let test_sorted = sort_clusters(test);
+    let ref_sorted = sort_clusters(reference);
 
-    // todo: this is hard and is going to fail anyway
+    let mut actual_differences: Vec<(Vec<u64>, Vec<u64>)> = Vec::default();
+    let mut expected_differences: Vec<(Vec<u64>, Vec<u64>)> = Vec::default();
+
+    for (test_set, ref_set) in test_sorted.iter().zip(ref_sorted.iter()) {
+        actual_differences.push(sorted_set_differences(test_set, ref_set));
+        expected_differences.push((Vec::default(), Vec::default()));
+    }
+
+    assert_eq!(actual_differences, expected_differences)
 }
 
 #[test]
 fn clusters() {
     // todo: sensitive to partition ordering
+    let mut syn_clus = ref_synapse_clustering();
+    let dhm = syn_clus.density_hill_map();
+    let test = syn_clus.clusters(&dhm);
+
+    let ref_json = read_file("results/synapse_clustering/clusters.result.json");
+    let ref_str: FastMap<usize, FastSet<String>> =
+        serde_json::from_str(&ref_json).expect("couldn't deser ref data");
+    let reference: FastMap<usize, FastSet<u64>> = ref_str
+        .iter()
+        .map(|(k, v)| (*k, v.iter().cloned().map(str_id).collect()))
+        .collect();
+
+    assert_equiv_clusters(&test, &reference)
+}
+
+#[test]
+fn clusters_from_ref_dhm() {
     let mut syn_clus = ref_synapse_clustering();
     let dhm = ref_dhm();
     let test = syn_clus.clusters(&dhm);
@@ -131,7 +164,6 @@ fn clusters() {
         .map(|(k, v)| (*k, v.iter().cloned().map(str_id).collect()))
         .collect();
 
-    assert_equiv_clusters(&test, &reference);
     assert_eq!(&test, &reference);
 }
 
